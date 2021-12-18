@@ -1,93 +1,30 @@
 # app.py
+import os
 import werkzeug.exceptions as ex
 import json
 import requests
-from six.moves.urllib.request import urlopen
+from web3 import Web3
+from pathlib import Path
+from auth0 import AuthError, requires_auth, requires_scope
 from functools import wraps
-from flask import Flask, request, jsonify, abort, _request_ctx_stack
+from flask import Flask, request, jsonify, abort
 from flask_cors import cross_origin
-from jose import jwt
+from exceptions import AuthError, LogicError
+from logging import DEBUG
 
-AUTH0_DOMAIN = 'dev-ycz6h9qe.eu.auth0.com'
-API_AUDIENCE = 'https://enitium-gateway.herokuapp.com/'
-ALGORITHMS = ["RS256"]
+#contract : 0x855539e32608298cF253dC5bFb25043D19692f6a
 
 app = Flask(__name__)
-
-class AuthError(Exception):
-    def __init__(self, error, status_code):
-        self.error = error
-        self.status_code = status_code
-
-def get_token_auth_header():
-    auth = request.headers.get("Authorization", None)
-    if not auth:
-        raise AuthError({"code": "authorization_header_missing", "description": "Authorization header is expected"}, 401)
-
-    parts = auth.split()
-
-    if parts[0].lower()!="bearer":
-        raise AuthError({"code": "invalid_header", "description": "Authorization header must start with Bearer"}, 401)
-    elif len(parts) == 1:
-        raise AuthError({"code": "invalid_header", "description": "Token not found"}, 401)
-    elif len(parts) > 2:
-        raise AuthError({"code": "invalid_header", "description": "Authorization header must be 'Bearer token'"}, 401)
-
-    token = parts[1]
-
-    return token
-
-def requires_auth(f):
-
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        token = get_token_auth_header()
-        jsonurl = urlopen("https://"+AUTH0_DOMAIN+"/.well-known/jwks.json")
-        jwks = json.loads(jsonurl.read())
-        unverified_header = jwt.get_unverified_header(token)
-        rsa_key = {}
-        for key in jwks["keys"]:
-            if key["kid"] == unverified_header["kid"]:
-                rsa_key = {
-                    "kty": key["kty"],
-                    "kid": key["kid"],
-                    "use": key["use"],
-                    "n": key["n"],
-                    "e": key["e"]
-                }
-        if rsa_key:
-            try:
-                payload = jwt.decode(
-                    token,
-                    rsa_key,
-                    algorithms=ALGORITHMS,
-                    audience=API_AUDIENCE,
-                    issuer="https://"+AUTH0_DOMAIN+"/"
-                )
-            except jwt.ExpiredSignatureError:
-                raise AuthError({"code": "token_expired", "description": "token is expired"}, 401)
-
-            except jwt.JWTClaimsError:
-                raise AuthError({"code": "invlid_claims", "description": "incorrect claims, please check the audience and issuer"}, 401)
-
-            except Exception:
-                raise AuthError({"code": "invalid_header", "description": "unable to parse authentication token"}, 401)
-
-            _request_ctx_stack.top.current_user = payload
-            return f(*args, **kwargs)
-        raise AuthError({"code": "invalid_header", "description": "Unable to find appropriate key"}, 401)
-
-    return decorated
-
-def requires_scope(required_scope):
-    token = get_token_auth_header()
-    unverified_claims = jwt.get_unverified_claims(token)
-    if unverified_claims.get("scope"):
-        token_scopes = unverified_claims["scope"].split()
-        for token_scope in token_scopes:
-            if token_scope == required_scope:
-                return True
-    return False
+app.logger.setLevel(DEBUG)
+w3 = Web3(Web3.HTTPProvider(os.environ['INFURA_NODE_URL']))
+CONTRACT_ADDRESS = os.environ['CONTRACT_ADDRESS']
+with open('EnitiumNFT.json', 'r') as f:
+    json_contract = json.load(f)
+CONTRACT_ABI = json_contract["abi"]
+OWNER_ACCOUNT = os.environ['OWNER_ACCOUNT']
+OWNER_PRIVATE_KEY = os.environ['OWNER_PRIVATE_KEY']
+IPFS_PROJECT_ID = os.environ['IPFS_PROJECT_ID']
+IPFS_PROJECT_SECRET = os.environ['IPFS_PROJECT_SECRET']
 
 @app.route('/')
 def index():
@@ -95,14 +32,69 @@ def index():
     response['callresponse'] = 'ok home'
     return jsonify(response)
 
-@app.route('/callapi/', methods=['GET'])
+@app.route('/post_ipfs', methods=['POST'])
 @requires_auth
-def respond():
+def post_ipfs():
     if requires_scope("access:gateway"):
-        response = {}
-        response['callresponse'] = 'ok'
-        return jsonify(response)
+        if "file" in request.files:
+            app.logger.info('File content %s',request.files['file'].read())
+            params = {'file': request.files['file'].read()}
+            response = requests.post(
+                os.environ['INFURA_IPFS_URL'] + '/api/v0/add', 
+                files=params,
+                auth=(IPFS_PROJECT_ID, IPFS_PROJECT_SECRET)
+            )
+            app.logger.info('Reponse %s', response)
+            return response.text
+        raise LogicError({"code": "Bad Request", "description": "No file input in request"}, 400)
     raise AuthError({"code": "Unauthorized", "description": "You don't have access to this resource"}, 403)
+
+@app.route('/mint', methods=['POST'])
+@requires_auth
+def mint():
+    if requires_scope("access:gateway"):
+        if w3.isConnected():
+            if "recipient_address" in request.form and "token_hash" in request.form:
+                if w3.isAddress(request.form['recipient_address']):
+                    recipient_address = request.form['recipient_address']
+                    token_hash = request.form['token_hash']
+                    if w3.eth.get_balance(recipient_address):
+                        params = {'arg': token_hash}
+                        ipfs_response = requests.post(
+                            os.environ['INFURA_IPFS_URL'] + '/api/v0/block/get', 
+                            params=params,
+                            auth=(IPFS_PROJECT_ID, IPFS_PROJECT_SECRET)
+                        )
+                        if ipfs_response.status_code == 200:
+                            enitiumcontract = w3.eth.contract(address=CONTRACT_ADDRESS, abi=CONTRACT_ABI)
+                            nonce = w3.eth.get_transaction_count(OWNER_ACCOUNT)
+                            app.logger.info('before sending transaction')
+                            enfty_tx = enitiumcontract.functions.mintNFT(
+                                OWNER_ACCOUNT, 
+                                ipfs_response.text
+                            ).buildTransaction({
+                                'chainId': 3,
+                                'gas': 100000,
+                                'maxFeePerGas': w3.toWei('2', 'gwei'),
+                                'maxPriorityFeePerGas': w3.toWei('1', 'gwei'),
+                                'nonce': nonce
+                            })
+                            signed_enfty_tx = w3.eth.account.sign_transaction(enfty_tx, OWNER_PRIVATE_KEY)
+                            tx_receipt = w3.eth.send_raw_transaction(signed_enfty_tx.rawTransaction)
+                            app.logger.info(tx_receipt)
+                            response = {'tx_hash' : tx_receipt.hex()}
+                            return response
+                        raise LogicError({"code": "Request Error", "description": "Token not found on IPFS host"}, 400)
+                    raise LogicError({"code": "Request Error", "description": "The recipient account does not exist"}, 400)
+                raise LogicError({"code": "Request Error", "description": "Bad request, input not a valid address"}, 400)
+            raise LogicError({"code": "Request Error", "description": "Bad request, key input not supplied"}, 400)
+        raise LogicError({"code": "Code Error", "description": "W3 not initialized"}, 500)
+    raise AuthError({"code": "Unauthorized", "description": "You don't have access to this resource"}, 403)
+
+@app.errorhandler(500)
+def internal_error(e):
+    return '<p>Internal Error occurred'
+
 
 @app.errorhandler(403)
 def access_forbidden(e):
@@ -116,4 +108,4 @@ def handle_auth_error(ex):
 
 if __name__ == '__main__':
     # Threaded option to enable multiple instances for multiple user access support
-    app.run(threaded=True, port=5000)
+    app.run(threaded=True, debug=True, port=5000)
