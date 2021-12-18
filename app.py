@@ -95,11 +95,6 @@ def mint():
 def internal_error(e):
     return '<p>Internal Error occurred'
 
-
-@app.errorhandler(403)
-def access_forbidden(e):
-    return '<p>Access forbidden</p>' 
-
 @app.errorhandler(AuthError)
 def handle_auth_error(ex):
     response = jsonify(ex.error)
