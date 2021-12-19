@@ -93,6 +93,46 @@ def mint():
         raise LogicError({"code": "Code Error", "description": "W3 not initialized"}, 500)
     raise AuthError({"code": "Unauthorized", "description": "You don't have access to this resource"}, 403)
 
+@app.route('/transfer', methods=['POST'])
+@requires_auth
+def transfer():
+    if requires_scope('access:gateway'):
+        if w3.isConnected():
+            if "from_address" in request.form and "from_pk" in request.form and "recipient_address" in request.form and "token_id" in request.form:
+                app.logger.info('from_address : %s', request.form['from_address'])
+                app.logger.info('from_pk : %s', request.form['from_pk'])
+                app.logger.info('token_id : %s', request.form['token_id'])
+                if w3.isAddress(request.form['from_address'].strip()) and w3.isAdress(request.form['to_address'].strip()):
+                    from_address = request.form['recipient_address'].strip()
+                    to_address = request.form['to_address'].strip()
+                    from_pk = request.form['from_pk'].strip()
+                    token_id = request.form['token_id'].strip()
+                    if w3.eth.get_balance(from_address):
+                        enitiumcontract = w3.eth.contract(address=CONTRACT_ADDRESS, abi=CONTRACT_ABI)
+                        nonce = w3.eth.get_transaction_count(from_address)
+                        app.logger.info('before sending transaction')
+                        enfty_tx = enitiumcontract.functions.transfer(
+                            from_address,
+                            to_address,
+                            token_id
+                        ).buildTransaction({
+                            'chainId': 3,
+                            'gas': 200000,
+                            'maxFeePerGas': w3.toWei('2', 'gwei'),
+                            'maxPriorityFeePerGas': w3.toWei('1', 'gwei'),
+                            'nonce': nonce
+                        })
+                        signed_enfty_tx = w3.eth.account.sign_transaction(enfty_tx, from_pk)
+                        tx_receipt = w3.eth.send_raw_transaction(signed_enfty_tx.rawTransaction)
+                        app.logger.info(tx_receipt)
+                        response = {'tx_hash' : tx_receipt.hex()}
+                        return response
+                    raise LogicError({"code": "Request Error", "description": "The recipient account does not exist"}, 400)
+                raise LogicError({"code": "Request Error", "description": "Bad request, input not a valid address"}, 400)
+            raise LogicError({"code": "Request Error", "description": "Bad request, key input not supplied"}, 400)
+        raise LogicError({"code": "Code Error", "description": "W3 not initialized"}, 500)
+    raise AuthError({"code": "Unauthorized", "description": "You don't have access to this resource"}, 403)
+
 @app.errorhandler(500)
 def internal_error(e):
     return '<p>Internal Error occurred'
