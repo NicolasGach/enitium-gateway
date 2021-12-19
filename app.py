@@ -116,7 +116,7 @@ def transfer():
                         enfty_tx = enitiumcontract.functions.transferFrom(
                             from_address,
                             to_address,
-                            token_id
+                            int(token_id)
                         ).buildTransaction({
                             'chainId': 3,
                             'gas': 200000,
