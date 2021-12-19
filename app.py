@@ -76,7 +76,7 @@ def mint():
                                 ipfs_response.text
                             ).buildTransaction({
                                 'chainId': 3,
-                                'gas': 100000,
+                                'gas': 200000,
                                 'maxFeePerGas': w3.toWei('2', 'gwei'),
                                 'maxPriorityFeePerGas': w3.toWei('1', 'gwei'),
                                 'nonce': nonce
