@@ -102,11 +102,13 @@ def transfer():
                 app.logger.info('from_address : %s', request.form['from_address'])
                 app.logger.info('from_pk : %s', request.form['from_pk'])
                 app.logger.info('token_id : %s', request.form['token_id'])
+                app.logger.info('to_address : %s', request.form['to_address'])
                 if w3.isAddress(request.form['from_address'].strip()) and w3.isAddress(request.form['to_address'].strip()):
-                    from_address = request.form['recipient_address'].strip()
+                    from_address = request.form['from_address'].strip()
                     to_address = request.form['to_address'].strip()
                     from_pk = request.form['from_pk'].strip()
                     token_id = request.form['token_id'].strip()
+                    app.logger.info('Before get balance ...')
                     if w3.eth.get_balance(from_address):
                         enitiumcontract = w3.eth.contract(address=CONTRACT_ADDRESS, abi=CONTRACT_ABI)
                         nonce = w3.eth.get_transaction_count(from_address)
