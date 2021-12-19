@@ -57,9 +57,9 @@ def mint():
             if "recipient_address" in request.form and "token_hash" in request.form:
                 app.logger.info('recipient_adress : %s', request.form['recipient_address']);
                 app.logger.info('token_hash : %s', request.form['token_hash']);
-                if w3.isAddress(request.form['recipient_address']):
-                    recipient_address = request.form['recipient_address']
-                    token_hash = request.form['token_hash']
+                if w3.isAddress(request.form['recipient_address'].strip()):
+                    recipient_address = request.form['recipient_address'].strip()
+                    token_hash = request.form['token_hash'].strip()
                     if w3.eth.get_balance(recipient_address):
                         params = {'arg': token_hash}
                         ipfs_response = requests.post(
