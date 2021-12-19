@@ -55,6 +55,8 @@ def mint():
     if requires_scope("access:gateway"):
         if w3.isConnected():
             if "recipient_address" in request.form and "token_hash" in request.form:
+                app.logger.info('recipient_adress : %s', request.form['recipient_address']);
+                app.logger.info('token_hash : %s', request.form['token_hash']);
                 if w3.isAddress(request.form['recipient_address']):
                     recipient_address = request.form['recipient_address']
                     token_hash = request.form['token_hash']
@@ -94,6 +96,12 @@ def mint():
 @app.errorhandler(500)
 def internal_error(e):
     return '<p>Internal Error occurred'
+
+@app.errorhandler(LogicError)
+def handle_logic_error(ex):
+    response = jsonify(ex.error)
+    response.status_code = ex.status_code
+    return response
 
 @app.errorhandler(AuthError)
 def handle_auth_error(ex):
