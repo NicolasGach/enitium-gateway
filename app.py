@@ -102,7 +102,7 @@ def transfer():
                 app.logger.info('from_address : %s', request.form['from_address'])
                 app.logger.info('from_pk : %s', request.form['from_pk'])
                 app.logger.info('token_id : %s', request.form['token_id'])
-                if w3.isAddress(request.form['from_address'].strip()) and w3.isAdress(request.form['to_address'].strip()):
+                if w3.isAddress(request.form['from_address'].strip()) and w3.isAddress(request.form['to_address'].strip()):
                     from_address = request.form['recipient_address'].strip()
                     to_address = request.form['to_address'].strip()
                     from_pk = request.form['from_pk'].strip()
