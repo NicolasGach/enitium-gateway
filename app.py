@@ -113,7 +113,7 @@ def transfer():
                         enitiumcontract = w3.eth.contract(address=CONTRACT_ADDRESS, abi=CONTRACT_ABI)
                         nonce = w3.eth.get_transaction_count(from_address)
                         app.logger.info('before sending transaction')
-                        enfty_tx = enitiumcontract.functions.transfer(
+                        enfty_tx = enitiumcontract.functions.transferFrom(
                             from_address,
                             to_address,
                             token_id
