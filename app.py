@@ -98,7 +98,7 @@ def mint():
 def transfer():
     if requires_scope('access:gateway'):
         if w3.isConnected():
-            if "from_address" in request.form and "from_pk" in request.form and "recipient_address" in request.form and "token_id" in request.form:
+            if "from_address" in request.form and "from_pk" in request.form and "to_address" in request.form and "token_id" in request.form:
                 app.logger.info('from_address : %s', request.form['from_address'])
                 app.logger.info('from_pk : %s', request.form['from_pk'])
                 app.logger.info('token_id : %s', request.form['token_id'])
