@@ -89,7 +89,12 @@ def mint():
                             decoded_tx_receipt = enitiumcontract.events.Transfer().processReceipt(tx_receipt)
                             app.logger.info('tx_receipt : %s', tx_receipt)
                             app.logger.info('tx_receipt decoded : %s', decoded_tx_receipt)
-                            response = {'tx_hash' : tx_receipt.hex()}
+                            response = {
+                                'tx_hash' : decoded_tx_receipt['transactionHash'], 
+                                'tx_from' : decoded_tx_receipt['args']['from'], 
+                                'tx_recipient' : decoded_tx_receipt['args']['to'], 
+                                'tx_token_id': decoded_tx_receipt['args']['tokenId']
+                            }
                             return response
                         raise LogicError({"code": "Request Error", "description": "Token not found on IPFS host"}, 400)
                     raise LogicError({"code": "Request Error", "description": "The sender account has no funds or does not exist"}, 400)
@@ -140,7 +145,12 @@ def transfer():
                         decoded_tx_receipt = enitiumcontract.events.Transfer().processReceipt(tx_receipt)
                         app.logger.info('tx_receipt : %s', tx_receipt)
                         app.logger.info('tx_receipt decoded : %s', decoded_tx_receipt)
-                        response = {'tx_hash' : tx_hash.hex()}
+                        response = {
+                            'tx_hash' : decoded_tx_receipt['transactionHash'], 
+                            'tx_from' : decoded_tx_receipt['args']['from'], 
+                            'tx_recipient' : decoded_tx_receipt['args']['to'], 
+                            'tx_token_id': decoded_tx_receipt['args']['tokenId']
+                        }
                         return response
                     raise LogicError({"code": "Request Error", "description": "The sender account has no funds for transfer"}, 400)
                 raise LogicError({"code": "Request Error", "description": "Bad request, input not a valid address"}, 400)
