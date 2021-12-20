@@ -108,7 +108,7 @@ def mint():
 def transfer():
     if requires_scope('access:gateway'):
         if w3.isConnected():
-            if all(key in request.fom for key in ("from_address", "from_pk", "to_address", "token_id", "vector")):
+            if all(key in request.form for key in ("from_address", "from_pk", "to_address", "token_id", "vector")):
                 app.logger.info(
                     'from_address : %s | from_pk : %s | token_id : %s | to_address : %s | vector : %s', 
                     request.form['from_address'],
@@ -161,7 +161,7 @@ def transfer():
 @app.route('/decrypt_test', methods=['POST'])
 @requires_auth
 def decrypt_test():
-    key = 'W9KBmyT2fASi0xeDAU8SNA=='
+    key = os.environ['AES_KEY']
     return decrypt_sf_aes(request.form['content'], key, request.form['vector'])
 
 
