@@ -132,10 +132,10 @@ def transfer():
                             'nonce': nonce
                         })
                         signed_enfty_tx = w3.eth.account.sign_transaction(enfty_tx, from_pk)
-                        tx_receipt = w3.eth.send_raw_transaction(signed_enfty_tx.rawTransaction)
+                        tx_hash = w3.eth.send_raw_transaction(signed_enfty_tx.rawTransaction)
+                        tx_receipt = w3.eth.getTransactionReceipt(tx_hash)
                         app.logger.info(tx_receipt)
-                        app.logger.info(tx_receipt.decode('utf-8'))
-                        response = {'tx_hash' : tx_receipt.hex()}
+                        response = {'tx_hash' : tx_hash.hex()}
                         return response
                     raise LogicError({"code": "Request Error", "description": "The sender account has no funds for transfer"}, 400)
                 raise LogicError({"code": "Request Error", "description": "Bad request, input not a valid address"}, 400)
