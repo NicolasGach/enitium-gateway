@@ -84,8 +84,11 @@ def mint():
                                 'nonce': nonce
                             })
                             signed_enfty_tx = w3.eth.account.sign_transaction(enfty_tx, OWNER_PRIVATE_KEY)
-                            tx_receipt = w3.eth.send_raw_transaction(signed_enfty_tx.rawTransaction)
-                            app.logger.info(tx_receipt)
+                            tx_hash = w3.eth.send_raw_transaction(signed_enfty_tx.rawTransaction)
+                            tx_receipt = w3.eth.get_transaction_receipt(tx_hash)
+                            decoded_tx_receipt = enitiumcontract.events.Transfer().processReceipt(tx_receipt)
+                            app.logger.info('tx_receipt : %s', tx_receipt)
+                            app.logger.info('tx_receipt decoded : %s', decoded_tx_receipt)
                             response = {'tx_hash' : tx_receipt.hex()}
                             return response
                         raise LogicError({"code": "Request Error", "description": "Token not found on IPFS host"}, 400)
