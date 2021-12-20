@@ -90,7 +90,7 @@ def mint():
                             app.logger.info('tx_receipt : %s', tx_receipt)
                             app.logger.info('tx_receipt decoded : %s', decoded_tx_receipt)
                             response = {
-                                'tx_hash' : decoded_tx_receipt[0]['transactionHash'], 
+                                'tx_hash' : decoded_tx_receipt[0]['transactionHash'].hex(), 
                                 'tx_from' : decoded_tx_receipt[0]['args']['from'], 
                                 'tx_recipient' : decoded_tx_receipt[0]['args']['to'], 
                                 'tx_token_id': decoded_tx_receipt[0]['args']['tokenId']
@@ -146,7 +146,7 @@ def transfer():
                         app.logger.info('tx_receipt : %s', tx_receipt)
                         app.logger.info('tx_receipt decoded : %s', decoded_tx_receipt)
                         response = {
-                            'tx_hash' : decoded_tx_receipt[0]['transactionHash'], 
+                            'tx_hash' : decoded_tx_receipt[0]['transactionHash'].hex(), 
                             'tx_from' : decoded_tx_receipt[0]['args']['from'], 
                             'tx_recipient' : decoded_tx_receipt[0]['args']['to'], 
                             'tx_token_id': decoded_tx_receipt[0]['args']['tokenId']
