@@ -133,8 +133,10 @@ def transfer():
                         })
                         signed_enfty_tx = w3.eth.account.sign_transaction(enfty_tx, from_pk)
                         tx_hash = w3.eth.send_raw_transaction(signed_enfty_tx.rawTransaction)
-                        tx_receipt = w3.eth.getTransactionReceipt(tx_hash)
-                        app.logger.info(tx_receipt)
+                        tx_receipt = w3.eth.get_transaction_receipt(tx_hash)
+                        decoded_tx_receipt = enitiumcontract.events.Transfer().processReceipt(tx_receipt)
+                        app.logger.info('tx_receipt : %s', tx_receipt)
+                        app.logger.info('tx_receipt decoded : %s', decoded_tx_receipt)
                         response = {'tx_hash' : tx_hash.hex()}
                         return response
                     raise LogicError({"code": "Request Error", "description": "The sender account has no funds for transfer"}, 400)
