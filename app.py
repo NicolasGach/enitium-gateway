@@ -2,6 +2,7 @@
 import os
 import werkzeug.exceptions as ex
 import json
+import base64
 import requests
 from web3 import Web3
 from pathlib import Path
@@ -11,6 +12,7 @@ from flask import Flask, request, jsonify, abort
 from flask_cors import cross_origin
 from exceptions import AuthError, LogicError
 from logging import DEBUG
+from helpful_scripts import decrypt_sf_aes
 
 #contract : 0x855539e32608298cF253dC5bFb25043D19692f6a
 
@@ -87,7 +89,7 @@ def mint():
                             response = {'tx_hash' : tx_receipt.hex()}
                             return response
                         raise LogicError({"code": "Request Error", "description": "Token not found on IPFS host"}, 400)
-                    raise LogicError({"code": "Request Error", "description": "The recipient account does not exist"}, 400)
+                    raise LogicError({"code": "Request Error", "description": "The sender account has no funds or does not exist"}, 400)
                 raise LogicError({"code": "Request Error", "description": "Bad request, input not a valid address"}, 400)
             raise LogicError({"code": "Request Error", "description": "Bad request, key input not supplied"}, 400)
         raise LogicError({"code": "Code Error", "description": "W3 not initialized"}, 500)
@@ -98,18 +100,23 @@ def mint():
 def transfer():
     if requires_scope('access:gateway'):
         if w3.isConnected():
-            if "from_address" in request.form and "from_pk" in request.form and "to_address" in request.form and "token_id" in request.form:
-                app.logger.info('from_address : %s', request.form['from_address'])
-                app.logger.info('from_pk : %s', request.form['from_pk'])
-                app.logger.info('token_id : %s', request.form['token_id'])
-                app.logger.info('to_address : %s', request.form['to_address'])
-                if w3.isAddress(request.form['from_address'].strip()) and w3.isAddress(request.form['to_address'].strip()):
-                    from_address = request.form['from_address'].strip()
-                    to_address = request.form['to_address'].strip()
-                    from_pk = request.form['from_pk'].strip()
-                    token_id = request.form['token_id'].strip()
+            if all(key in request.fom for key in ("from_address", "from_pk", "to_address", "token_id", "vector")):
+                app.logger.info(
+                    'from_address : %s | from_pk : %s | token_id : %s | to_address : %s | vector : %s', 
+                    request.form['from_address'],
+                    request.form['from_pk'],
+                    request.form['token_id'],
+                    request.form['to_address'],
+                    request.form['vector']
+                )
+                from_address = request.form['from_address'].strip()
+                to_address = request.form['to_address'].strip()
+                vector = request.form['vector'].strip()
+                from_pk = decrypt_sf_aes(request.form['from_pk'].strip(), os.environ['AES_KEY'], vector)
+                token_id = request.form['token_id'].strip()
+                if w3.isAddress(from_address) and w3.isAddress(to_address):
                     app.logger.info('Before get balance ...')
-                    if w3.eth.get_balance(from_address):
+                    if w3.eth.get_balance(from_address) > 200000:
                         enitiumcontract = w3.eth.contract(address=CONTRACT_ADDRESS, abi=CONTRACT_ABI)
                         nonce = w3.eth.get_transaction_count(from_address)
                         app.logger.info('before sending transaction')
@@ -127,13 +134,21 @@ def transfer():
                         signed_enfty_tx = w3.eth.account.sign_transaction(enfty_tx, from_pk)
                         tx_receipt = w3.eth.send_raw_transaction(signed_enfty_tx.rawTransaction)
                         app.logger.info(tx_receipt)
+                        app.logger.info(tx_receipt.decode('utf-8'))
                         response = {'tx_hash' : tx_receipt.hex()}
                         return response
-                    raise LogicError({"code": "Request Error", "description": "The recipient account does not exist"}, 400)
+                    raise LogicError({"code": "Request Error", "description": "The sender account has no funds for transfer"}, 400)
                 raise LogicError({"code": "Request Error", "description": "Bad request, input not a valid address"}, 400)
             raise LogicError({"code": "Request Error", "description": "Bad request, key input not supplied"}, 400)
         raise LogicError({"code": "Code Error", "description": "W3 not initialized"}, 500)
     raise AuthError({"code": "Unauthorized", "description": "You don't have access to this resource"}, 403)
+
+@app.route('/decrypt_test', methods=['POST'])
+@requires_auth
+def decrypt_test():
+    key = 'W9KBmyT2fASi0xeDAU8SNA=='
+    return decrypt_sf_aes(request.form['content'], key, request.form['vector'])
+
 
 @app.errorhandler(500)
 def internal_error(e):
