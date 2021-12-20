@@ -91,9 +91,9 @@ def mint():
                             app.logger.info('tx_receipt decoded : %s', decoded_tx_receipt)
                             response = {
                                 'tx_hash' : decoded_tx_receipt[0]['transactionHash'], 
-                                'tx_from' : decoded_tx_receipt[0]['args'][0]['from'], 
-                                'tx_recipient' : decoded_tx_receipt[0]['args'][0]['to'], 
-                                'tx_token_id': decoded_tx_receipt[0]['args'][0]['tokenId']
+                                'tx_from' : decoded_tx_receipt[0]['args']['from'], 
+                                'tx_recipient' : decoded_tx_receipt[0]['args']['to'], 
+                                'tx_token_id': decoded_tx_receipt[0]['args']['tokenId']
                             }
                             return response
                         raise LogicError({"code": "Request Error", "description": "Token not found on IPFS host"}, 400)
@@ -147,9 +147,9 @@ def transfer():
                         app.logger.info('tx_receipt decoded : %s', decoded_tx_receipt)
                         response = {
                             'tx_hash' : decoded_tx_receipt[0]['transactionHash'], 
-                            'tx_from' : decoded_tx_receipt[0]['args'][0]['args']['from'], 
-                            'tx_recipient' : decoded_tx_receipt[0]['args'][0]['to'], 
-                            'tx_token_id': decoded_tx_receipt[0]['args'][0]['tokenId']
+                            'tx_from' : decoded_tx_receipt[0]['args']['from'], 
+                            'tx_recipient' : decoded_tx_receipt[0]['args']['to'], 
+                            'tx_token_id': decoded_tx_receipt[0]['args']['tokenId']
                         }
                         return response
                     raise LogicError({"code": "Request Error", "description": "The sender account has no funds for transfer"}, 400)
