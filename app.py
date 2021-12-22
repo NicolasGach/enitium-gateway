@@ -55,6 +55,7 @@ def post_ipfs():
 @requires_auth
 def mint():
     if requires_scope("access:gateway"):
+        app.logger.info('passed authentication')
         if w3.isConnected():
             if "recipient_address" in request.form and "token_hash" in request.form:
                 app.logger.info('recipient_adress : %s', request.form['recipient_address']);
