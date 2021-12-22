@@ -71,13 +71,14 @@ def mint():
                         )
                         if ipfs_response.status_code == 200:
                             enitiumcontract = w3.eth.contract(address=CONTRACT_ADDRESS, abi=CONTRACT_ABI)
-                            #nonce = w3.eth.get_transaction_count(OWNER_ACCOUNT)
-                            nonce = 0
+                            nonce = w3.eth.get_transaction_count(OWNER_ACCOUNT)
+                            #nonce = 0
                             app.logger.info('before sending transaction')
                             enfty_tx = enitiumcontract.functions.mintNFT(
                                 OWNER_ACCOUNT, 
                                 ipfs_response.text
                             ).buildTransaction({
+                                'from': OWNER_ACCOUNT,
                                 'chainId': 3,
                                 'gas': 400000,
                                 'maxFeePerGas': w3.toWei('2', 'gwei'),
@@ -134,6 +135,7 @@ def transfer():
                             to_address,
                             int(token_id)
                         ).buildTransaction({
+                            'from': from_address,
                             'chainId': 3,
                             'gas': 200000,
                             'maxFeePerGas': w3.toWei('2', 'gwei'),
