@@ -71,7 +71,8 @@ def mint():
                         )
                         if ipfs_response.status_code == 200:
                             enitiumcontract = w3.eth.contract(address=CONTRACT_ADDRESS, abi=CONTRACT_ABI)
-                            nonce = w3.eth.get_transaction_count(OWNER_ACCOUNT)
+                            #nonce = w3.eth.get_transaction_count(OWNER_ACCOUNT)
+                            nonce = 0
                             app.logger.info('before sending transaction')
                             enfty_tx = enitiumcontract.functions.mintNFT(
                                 OWNER_ACCOUNT, 
