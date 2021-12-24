@@ -2,19 +2,20 @@
 import os
 import werkzeug.exceptions as ex
 import json
-import base64
 import requests
 from web3 import Web3
 from pathlib import Path
 from auth0 import AuthError, requires_auth, requires_scope
-from functools import wraps
 from flask import Flask, request, jsonify, abort
 from flask_cors import cross_origin
 from exceptions import AuthError, LogicError
 from logging import DEBUG
-from helpful_scripts import decrypt_sf_aes
+from helpful_scripts import decrypt_sf_aes, sign_and_send_w3_transaction_transfer_type, sanitize_dict
+from decorators import requires_post_params, requires_w3_access
+from classes import W3EnitiumContract
 
 #contract : 0x855539e32608298cF253dC5bFb25043D19692f6a
+#upgradeable : 0xdE2b51ba8888e401725Df10328EE5063fdaF1a3E
 
 app = Flask(__name__)
 app.logger.setLevel(DEBUG)
@@ -53,114 +54,106 @@ def post_ipfs():
 
 @app.route('/mint', methods=['POST'])
 @requires_auth
+@requires_post_params(['recipient_address', 'token_hash'])
+@requires_w3_access
 def mint():
-    if requires_scope("access:gateway"):
-        app.logger.info('passed authentication')
-        if w3.isConnected():
-            if "recipient_address" in request.form and "token_hash" in request.form:
-                app.logger.info('recipient_adress : %s', request.form['recipient_address']);
-                app.logger.info('token_hash : %s', request.form['token_hash']);
-                if w3.isAddress(request.form['recipient_address'].strip()):
-                    recipient_address = request.form['recipient_address'].strip()
-                    token_hash = request.form['token_hash'].strip()
-                    if w3.eth.get_balance(recipient_address):
-                        params = {'arg': token_hash}
-                        ipfs_response = requests.post(
-                            os.environ['INFURA_IPFS_URL'] + '/api/v0/block/get', 
-                            params=params,
-                            auth=(IPFS_PROJECT_ID, IPFS_PROJECT_SECRET)
-                        )
-                        if ipfs_response.status_code == 200:
-                            enitiumcontract = w3.eth.contract(address=CONTRACT_ADDRESS, abi=CONTRACT_ABI)
-                            nonce = w3.eth.get_transaction_count(OWNER_ACCOUNT)
-                            #nonce = 0
-                            app.logger.info('before sending transaction')
-                            enfty_tx = enitiumcontract.functions.mintNFT(
-                                OWNER_ACCOUNT, 
-                                ipfs_response.text
-                            ).buildTransaction({
-                                'from': OWNER_ACCOUNT,
-                                'chainId': 3,
-                                'gas': 400000,
-                                'maxFeePerGas': w3.toWei('2', 'gwei'),
-                                'maxPriorityFeePerGas': w3.toWei('1', 'gwei'),
-                                'nonce': nonce
-                            })
-                            signed_enfty_tx = w3.eth.account.sign_transaction(enfty_tx, OWNER_PRIVATE_KEY)
-                            tx_hash = w3.eth.send_raw_transaction(signed_enfty_tx.rawTransaction)
-                            tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash, poll_latency=0.5)
-                            decoded_tx_receipt = enitiumcontract.events.Transfer().processReceipt(tx_receipt)
-                            app.logger.info('tx_receipt : %s', tx_receipt)
-                            app.logger.info('tx_receipt decoded : %s', decoded_tx_receipt)
-                            response = {
-                                'tx_hash' : decoded_tx_receipt[0]['transactionHash'].hex(), 
-                                'tx_from' : decoded_tx_receipt[0]['args']['from'], 
-                                'tx_recipient' : decoded_tx_receipt[0]['args']['to'], 
-                                'tx_token_id': decoded_tx_receipt[0]['args']['tokenId']
-                            }
-                            return response
-                        raise LogicError({"code": "Request Error", "description": "Token not found on IPFS host"}, 400)
-                    raise LogicError({"code": "Request Error", "description": "The sender account has no funds or does not exist"}, 400)
-                raise LogicError({"code": "Request Error", "description": "Bad request, input not a valid address"}, 400)
-            raise LogicError({"code": "Request Error", "description": "Bad request, key input not supplied"}, 400)
+    if not requires_scope("access:gateway"):
+        raise AuthError({"code": "Unauthorized", "description": "You don't have access to this resource"}, 403)
+    if not w3.isConnected():
         raise LogicError({"code": "Code Error", "description": "W3 not initialized"}, 500)
-    raise AuthError({"code": "Unauthorized", "description": "You don't have access to this resource"}, 403)
+    sane_form = sanitize_dict(request.form)
+    app.logger.info('sane_form : %s', sane_form)
+    if not w3.isAddress(sane_form['recipient_address']):
+        raise LogicError({"code": "Request Error", "description": "Bad request, input not a valid address"}, 400)
+    if not w3.eth.get_balance(sane_form['recipient_address']):
+        raise LogicError({"code": "Request Error", "description": "The sender account has no funds or does not exist"}, 400)
+    ipfs_response = requests.post(
+        os.environ['INFURA_IPFS_URL'] + '/api/v0/block/get', 
+        params={'arg': sane_form['token_hash']},
+        auth=(IPFS_PROJECT_ID, IPFS_PROJECT_SECRET)
+    )
+    if not ipfs_response.status_code == 200:
+        raise LogicError({"code": "Request Error", "description": "Token not found on IPFS host"}, 400)
+    enitiumcontract = w3.eth.contract(address=CONTRACT_ADDRESS, abi=CONTRACT_ABI)
+    nonce = w3.eth.get_transaction_count(OWNER_ACCOUNT)
+    #nonce = 0
+    app.logger.info('before sending transaction')
+    enfty_tx = enitiumcontract.functions.mintNFT( OWNER_ACCOUNT, ipfs_response.text
+    ).buildTransaction({
+        'from': OWNER_ACCOUNT,
+        'chainId': 3,
+        'gas': 400000,
+        'maxFeePerGas': w3.toWei('2', 'gwei'),
+        'maxPriorityFeePerGas': w3.toWei('1', 'gwei'),
+        'nonce': nonce
+    })
+    response = sign_and_send_w3_transaction_transfer_type(w3, enitiumcontract, enfty_tx, OWNER_PRIVATE_KEY)
+    return response
 
 @app.route('/transfer', methods=['POST'])
 @requires_auth
+@requires_post_params(['from_address', 'from_pk', 'to_address', 'token_id', 'vector'])
 def transfer():
-    if requires_scope('access:gateway'):
-        if w3.isConnected():
-            if all(key in request.form for key in ("from_address", "from_pk", "to_address", "token_id", "vector")):
-                app.logger.info(
-                    'from_address : %s | from_pk : %s | token_id : %s | to_address : %s | vector : %s', 
-                    request.form['from_address'],
-                    request.form['from_pk'],
-                    request.form['token_id'],
-                    request.form['to_address'],
-                    request.form['vector']
-                )
-                from_address = request.form['from_address'].strip()
-                to_address = request.form['to_address'].strip()
-                vector = request.form['vector'].strip()
-                from_pk = decrypt_sf_aes(request.form['from_pk'].strip(), os.environ['AES_KEY'], vector)
-                token_id = request.form['token_id'].strip()
-                if w3.isAddress(from_address) and w3.isAddress(to_address):
-                    app.logger.info('Before get balance ...')
-                    if w3.eth.get_balance(from_address) > 200000:
-                        enitiumcontract = w3.eth.contract(address=CONTRACT_ADDRESS, abi=CONTRACT_ABI)
-                        nonce = w3.eth.get_transaction_count(from_address)
-                        app.logger.info('before sending transaction')
-                        enfty_tx = enitiumcontract.functions.transferFrom(
-                            from_address,
-                            to_address,
-                            int(token_id)
-                        ).buildTransaction({
-                            'from': from_address,
-                            'chainId': 3,
-                            'gas': 200000,
-                            'maxFeePerGas': w3.toWei('2', 'gwei'),
-                            'maxPriorityFeePerGas': w3.toWei('1', 'gwei'),
-                            'nonce': nonce
-                        })
-                        signed_enfty_tx = w3.eth.account.sign_transaction(enfty_tx, from_pk)
-                        tx_hash = w3.eth.send_raw_transaction(signed_enfty_tx.rawTransaction)
-                        tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash, poll_latency=0.5)
-                        decoded_tx_receipt = enitiumcontract.events.Transfer().processReceipt(tx_receipt)
-                        app.logger.info('tx_receipt : %s', tx_receipt)
-                        app.logger.info('tx_receipt decoded : %s', decoded_tx_receipt)
-                        response = {
-                            'tx_hash' : decoded_tx_receipt[0]['transactionHash'].hex(), 
-                            'tx_from' : decoded_tx_receipt[0]['args']['from'], 
-                            'tx_recipient' : decoded_tx_receipt[0]['args']['to'], 
-                            'tx_token_id': decoded_tx_receipt[0]['args']['tokenId']
-                        }
-                        return response
-                    raise LogicError({"code": "Request Error", "description": "The sender account has no funds for transfer"}, 400)
-                raise LogicError({"code": "Request Error", "description": "Bad request, input not a valid address"}, 400)
-            raise LogicError({"code": "Request Error", "description": "Bad request, key input not supplied"}, 400)
+    if not requires_scope('access:gateway'):
+        raise AuthError({"code": "Unauthorized", "description": "You don't have access to this resource"}, 403)
+    if not w3.isConnected():
         raise LogicError({"code": "Code Error", "description": "W3 not initialized"}, 500)
-    raise AuthError({"code": "Unauthorized", "description": "You don't have access to this resource"}, 403)
+    sane_form = sanitize_dict(request.form)
+    app.logger.info('sane_form : %s', sane_form)
+    from_pk = decrypt_sf_aes(sane_form['from_pk'], os.environ['AES_KEY'], sane_form['vector'])
+    if w3.isAddress(sane_form['from_address']) and w3.isAddress(sane_form['to_address']):
+        app.logger.info('Before get balance ...')
+        if w3.eth.get_balance(sane_form['from_address']) > 200000:
+            enitiumcontract = w3.eth.contract(address=CONTRACT_ADDRESS, abi=CONTRACT_ABI)
+            nonce = w3.eth.get_transaction_count(sane_form['from_address'])
+            app.logger.info('before sending transaction')
+            enfty_tx = enitiumcontract.functions.transferFrom(
+                sane_form['from_address'],
+                sane_form['to_address'],
+                int(sane_form['token_id'])
+            ).buildTransaction({
+                'from': sane_form['from_address'],
+                'chainId': 3,
+                'gas': 200000,
+                'maxFeePerGas': w3.toWei('2', 'gwei'),
+                'maxPriorityFeePerGas': w3.toWei('1', 'gwei'),
+                'nonce': nonce
+            })
+            response = sign_and_send_w3_transaction_transfer_type(w3, enitiumcontract, enfty_tx, from_pk)
+            return response
+        raise LogicError({"code": "Request Error", "description": "The sender account has no funds for transfer"}, 400)
+    raise LogicError({"code": "Request Error", "description": "Bad request, input not a valid address"}, 400)
+
+@app.route('/burn', methods=['POST'])
+@requires_auth
+@requires_post_params(['token_id', 'from_address', 'from_pk', 'vector'])
+def burn():
+    if not requires_scope('access:gateway'):
+        raise AuthError({"code": "Unauthorized", "description": "You don't have access to this resource"}, 403)
+    if not w3.isConnected():
+        raise LogicError({"code": "Code Error", "description": "W3 not initialized"}, 500)
+    sane_form = sanitize_dict(request.form)
+    app.logger.info('sane_form : %s', sane_form)
+    from_pk = decrypt_sf_aes(sane_form['from_pk'], os.environ['AES_KEY'], sane_form['vector'])
+    if w3.isAddress(sane_form['from_address']):
+        app.logger.info('Before get balance ...')
+        if w3.eth.get_balance(sane_form['from_address']) > 200000:
+            enitiumcontract = w3.eth.contract(address=CONTRACT_ADDRESS, abi=CONTRACT_ABI)
+            nonce = w3.eth.get_transaction_count(sane_form['from_address'])
+            app.logger.info('before sending transaction')
+            enfty_tx = enitiumcontract.functions.burn(int(sane_form['token_id'])
+            ).buildTransaction({
+                'from': sane_form['from_address'],
+                'chainId': 3,
+                'gas': 200000,
+                'maxFeePerGas': w3.toWei('2', 'gwei'),
+                'maxPriorityFeePerGas': w3.toWei('1', 'gwei'),
+                'nonce': nonce
+            })
+            response = sign_and_send_w3_transaction_transfer_type(w3, enitiumcontract, enfty_tx, from_pk)
+            return response
+        raise LogicError({"code": "Request Error", "description": "The sender account has no funds for transfer"}, 400)
+    raise LogicError({"code": "Request Error", "description": "Bad request, input not a valid address"}, 400)
 
 @app.route('/decrypt_test', methods=['POST'])
 @requires_auth
