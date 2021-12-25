@@ -2,8 +2,10 @@
 import os
 import werkzeug.exceptions as ex
 import json
+import re
 import requests
-from web3 import Web3
+from web3 import Web3, exceptions
+from eth_abi import decode_single
 from pathlib import Path
 from auth0 import AuthError, requires_auth, requires_scope
 from flask import Flask, request, jsonify, abort
@@ -78,7 +80,7 @@ def mint():
     nonce = w3.eth.get_transaction_count(OWNER_ACCOUNT)
     #nonce = 0
     app.logger.info('before sending transaction')
-    enfty_tx = enitiumcontract.functions.mintNFT( OWNER_ACCOUNT, ipfs_response.text
+    enfty_tx = enitiumcontract.functions.mintNFT(sane_form['recipient_address'], ipfs_response.text
     ).buildTransaction({
         'from': OWNER_ACCOUNT,
         'chainId': 3,
@@ -139,6 +141,11 @@ def burn():
         app.logger.info('Before get balance ...')
         if w3.eth.get_balance(sane_form['from_address']) > 200000:
             enitiumcontract = w3.eth.contract(address=CONTRACT_ADDRESS, abi=CONTRACT_ABI)
+            try:
+                enitiumcontract.functions.tokenURI(int(sane_form['token_id'])).call()
+            except exceptions.ContractLogicError as e:
+                app.logger.info('exception : {0}'.format(e))
+                raise LogicError({"code": "Blockchain Error", "description": "Smart contract returned exception, possibly trying to burn a non-existing token : {0}".format(e)}, 500)
             nonce = w3.eth.get_transaction_count(sane_form['from_address'])
             app.logger.info('before sending transaction')
             enfty_tx = enitiumcontract.functions.burn(int(sane_form['token_id'])
@@ -155,12 +162,29 @@ def burn():
         raise LogicError({"code": "Request Error", "description": "The sender account has no funds for transfer"}, 400)
     raise LogicError({"code": "Request Error", "description": "Bad request, input not a valid address"}, 400)
 
+@app.route('/tokenURI/<tokenId>', methods=['GET'])
+@requires_auth
+def getTokenURI(tokenId):
+    if not requires_scope('access:gateway'):
+        raise AuthError({"code": "Unauthorized", "description": "You don't have access to this resource"}, 403)
+    if not w3.isConnected():
+        raise LogicError({"code": "Code Error", "description": "W3 not initialized"}, 500)
+    try:
+        enitiumcontract = w3.eth.contract(address=CONTRACT_ADDRESS, abi=CONTRACT_ABI)
+        tokenURI = enitiumcontract.functions.tokenURI(int(tokenId)).call()
+        m = re.search(r'{.+}', tokenURI)
+        app.logger.info('tokenURI : {0}'.format(tokenURI))
+        app.logger.info('m : {0}'.format(m.group(0)))
+        return m.group(0)
+    except exceptions.ContractLogicError as e:
+        app.logger.info('exception : {0}'.format(e))
+        raise LogicError({"code": "Blockchain Error", "description": "Smart contract returned exception: {0}".format(e)}, 500)
+
 @app.route('/decrypt_test', methods=['POST'])
 @requires_auth
 def decrypt_test():
     key = os.environ['AES_KEY']
     return decrypt_sf_aes(request.form['content'], key, request.form['vector'])
-
 
 @app.errorhandler(500)
 def internal_error(e):
