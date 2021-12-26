@@ -5,6 +5,7 @@ from flask import Flask
 from logging import DEBUG
 from web3 import Web3
 import os
+import json
 
 app = Flask(__name__)
 app.logger.setLevel(DEBUG)
