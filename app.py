@@ -93,7 +93,7 @@ def mint():
         'maxPriorityFeePerGas': w3.toWei('1', 'gwei'),
         'nonce': nonce
     })
-    signed_transaction = w3.eth.account.sign_transaction(enfty_tx, OWNER_ACCOUNT)
+    signed_transaction = w3.eth.account.sign_transaction(enfty_tx, OWNER_PRIVATE_KEY)
     tx_hash = w3.eth.send_raw_transaction(signed_transaction.rawTransaction)
     q_high.enqueue(wait_and_process_receipt, args=(w3, enitiumcontract, tx_hash))
     return { 'tx_hash': tx_hash, 'job_enqueued' : 'ok' }
