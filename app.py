@@ -23,6 +23,7 @@ from worker import conn
 
 app = Flask(__name__)
 app.logger.setLevel(DEBUG)
+global w3
 w3 = Web3(Web3.HTTPProvider(os.environ['INFURA_NODE_URL']))
 CONTRACT_ADDRESS = os.environ['CONTRACT_ADDRESS']
 with open('EnitiumNFT.json', 'r') as f:
