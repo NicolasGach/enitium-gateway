@@ -4,6 +4,7 @@ import base64
 from flask import Flask
 from logging import DEBUG
 from web3 import Web3
+import os
 
 app = Flask(__name__)
 app.logger.setLevel(DEBUG)
