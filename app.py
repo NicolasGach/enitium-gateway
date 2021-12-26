@@ -12,9 +12,11 @@ from flask import Flask, request, jsonify, abort
 from flask_cors import cross_origin
 from exceptions import AuthError, LogicError
 from logging import DEBUG
-from helpful_scripts import decrypt_sf_aes, sign_and_send_w3_transaction_transfer_type, sanitize_dict
+from helpful_scripts import decrypt_sf_aes, sign_and_send_w3_transaction_transfer_type, sanitize_dict, wait_and_process_receipt
 from decorators import requires_post_params, requires_w3_access
 from classes import W3EnitiumContract
+from rq import Queue
+from worker import conn
 
 #contract : 0x855539e32608298cF253dC5bFb25043D19692f6a
 #upgradeable : 0xdE2b51ba8888e401725Df10328EE5063fdaF1a3E
@@ -30,6 +32,8 @@ OWNER_ACCOUNT = os.environ['OWNER_ACCOUNT']
 OWNER_PRIVATE_KEY = os.environ['OWNER_PRIVATE_KEY']
 IPFS_PROJECT_ID = os.environ['IPFS_PROJECT_ID']
 IPFS_PROJECT_SECRET = os.environ['IPFS_PROJECT_SECRET']
+q_high = Queue('high', connection = conn)
+q_low = Queue('low', connection = conn)
 
 @app.route('/')
 def index():
@@ -89,7 +93,11 @@ def mint():
         'maxPriorityFeePerGas': w3.toWei('1', 'gwei'),
         'nonce': nonce
     })
-    response = sign_and_send_w3_transaction_transfer_type(w3, enitiumcontract, enfty_tx, OWNER_PRIVATE_KEY)
+    signed_transaction = w3.eth.account.sign_transaction(enfty_tx, OWNER_ACCOUNT)
+    tx_hash = w3.eth.send_raw_transaction(signed_transaction.rawTransaction)
+    q_high.enqueue(wait_and_process_receipt, args=(w3, enitiumcontract, tx_hash))
+    return { 'tx_hash': tx_hash, 'job_enqueued' : 'ok' }
+    #response = sign_and_send_w3_transaction_transfer_type(w3, enitiumcontract, enfty_tx, OWNER_PRIVATE_KEY)
     return response
 
 @app.route('/transfer', methods=['POST'])
@@ -179,6 +187,12 @@ def getTokenURI(tokenId):
     except exceptions.ContractLogicError as e:
         app.logger.info('exception : {0}'.format(e))
         raise LogicError({"code": "Blockchain Error", "description": "Smart contract returned exception: {0}".format(e)}, 500)
+
+@app.route('/receipt')
+@requires_auth
+@requires_post_params(['tx_hash'])
+def getReceipt():
+
 
 @app.route('/decrypt_test', methods=['POST'])
 @requires_auth

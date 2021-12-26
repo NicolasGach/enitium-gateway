@@ -34,6 +34,20 @@ def sign_and_send_w3_transaction_transfer_type(w3, contract, builtTransaction, s
     }
     return response
 
+def wait_and_process_receipt(w3, contract, tx_hash):
+    tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash, poll_latency=0.5)
+    decoded_tx_receipt = contract.events.Transfer().processReceipt(tx_receipt)
+    app.logger.info('tx_receipt : %s', tx_receipt)
+    app.logger.info('tx_receipt decoded : %s', decoded_tx_receipt)
+    response = {
+        'tx_hash' : decoded_tx_receipt[0]['transactionHash'].hex(), 
+        'tx_from' : decoded_tx_receipt[0]['args']['from'], 
+        'tx_recipient' : decoded_tx_receipt[0]['args']['to'], 
+        'tx_token_id': decoded_tx_receipt[0]['args']['tokenId']
+    }
+    return response
+
+
 def sanitize_dict(dict):
     sane_form = {}
     for key in dict: sane_form[key] = dict[key].strip()
