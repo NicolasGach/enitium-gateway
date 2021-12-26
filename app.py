@@ -23,7 +23,6 @@ from worker import conn
 
 app = Flask(__name__)
 app.logger.setLevel(DEBUG)
-global w3
 w3 = Web3(Web3.HTTPProvider(os.environ['INFURA_NODE_URL']))
 CONTRACT_ADDRESS = os.environ['CONTRACT_ADDRESS']
 with open('EnitiumNFT.json', 'r') as f:
@@ -96,7 +95,7 @@ def mint():
     })
     signed_transaction = w3.eth.account.sign_transaction(enfty_tx, OWNER_PRIVATE_KEY)
     tx_hash = w3.eth.send_raw_transaction(signed_transaction.rawTransaction)
-    q_high.enqueue(wait_and_process_receipt, args=(w3, enitiumcontract, tx_hash))
+    q_high.enqueue(wait_and_process_receipt, args=(enitiumcontract, tx_hash))
     return { 'tx_hash': tx_hash, 'job_enqueued' : 'ok' }
     #response = sign_and_send_w3_transaction_transfer_type(w3, enitiumcontract, enfty_tx, OWNER_PRIVATE_KEY)
     return response

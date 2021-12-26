@@ -3,9 +3,11 @@ from Crypto.Util.Padding import unpad
 import base64
 from flask import Flask
 from logging import DEBUG
+from web3 import Web3
 
 app = Flask(__name__)
 app.logger.setLevel(DEBUG)
+w3 = Web3(Web3.HTTPProvider(os.environ['INFURA_NODE_URL']))
 
 def decrypt_sf_aes(content, key, vector):
     app.logger.info('vector : %s | content : %s', vector, content)
@@ -35,7 +37,7 @@ def sign_and_send_w3_transaction_transfer_type(w3, contract, builtTransaction, s
     return response
 
 global wait_and_process_receipt
-def wait_and_process_receipt(w3, contract, tx_hash):
+def wait_and_process_receipt(contract, tx_hash):
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash, poll_latency=0.5)
     decoded_tx_receipt = contract.events.Transfer().processReceipt(tx_receipt)
     app.logger.info('tx_receipt : %s', tx_receipt)
