@@ -34,6 +34,7 @@ def sign_and_send_w3_transaction_transfer_type(w3, contract, builtTransaction, s
     }
     return response
 
+global wait_and_process_receipt
 def wait_and_process_receipt(w3, contract, tx_hash):
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash, poll_latency=0.5)
     decoded_tx_receipt = contract.events.Transfer().processReceipt(tx_receipt)
