@@ -95,7 +95,7 @@ def mint():
     })
     signed_transaction = w3.eth.account.sign_transaction(enfty_tx, OWNER_PRIVATE_KEY)
     tx_hash = w3.eth.send_raw_transaction(signed_transaction.rawTransaction)
-    q_high.enqueue(wait_and_process_receipt, args=(tx_hash))
+    q_high.enqueue(wait_and_process_receipt, args=(tx_hash,))
     return { 'tx_hash': tx_hash, 'job_enqueued' : 'ok' }
     #response = sign_and_send_w3_transaction_transfer_type(w3, enitiumcontract, enfty_tx, OWNER_PRIVATE_KEY)
     return response
