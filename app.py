@@ -192,7 +192,7 @@ def getTokenURI(tokenId):
 @requires_auth
 @requires_post_params(['tx_hash'])
 def getReceipt():
-
+    pass
 
 @app.route('/decrypt_test', methods=['POST'])
 @requires_auth
