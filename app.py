@@ -17,6 +17,8 @@ from decorators import requires_post_params, requires_w3_access
 from classes import W3EnitiumContract
 from rq import Queue
 from worker import conn
+from sqlalchemy import create_engine, Metadata, Table
+import uuid
 
 #contract : 0x855539e32608298cF253dC5bFb25043D19692f6a
 #upgradeable : 0xdE2b51ba8888e401725Df10328EE5063fdaF1a3E
@@ -34,6 +36,10 @@ IPFS_PROJECT_ID = os.environ['IPFS_PROJECT_ID']
 IPFS_PROJECT_SECRET = os.environ['IPFS_PROJECT_SECRET']
 q_high = Queue('high', connection = conn)
 q_low = Queue('low', connection = conn)
+sqlengine = create_engine(os.environ['DATABASE_URL'], echo=True, logging_name='gatewayengine')
+metadata_obj = Metadata(schema='salesforce')
+metadata_obj.reflect(bind=sqlengine)
+enfty_tx_table = metadata_obj.tables['Enfty_Bol_Transaction_Data__c']
 
 @app.route('/')
 def index():
@@ -60,7 +66,7 @@ def post_ipfs():
 
 @app.route('/mint', methods=['POST'])
 @requires_auth
-@requires_post_params(['recipient_address', 'token_hash'])
+@requires_post_params(['recipient_address', 'token_hash', 'bol_id'])
 @requires_w3_access
 def mint():
     if not requires_scope("access:gateway"):
@@ -95,8 +101,15 @@ def mint():
     })
     signed_transaction = w3.eth.account.sign_transaction(enfty_tx, OWNER_PRIVATE_KEY)
     tx_hash = w3.eth.send_raw_transaction(signed_transaction.rawTransaction)
-    q_high.enqueue(wait_and_process_receipt, args=(tx_hash,))
-    return { 'tx_hash': tx_hash.hex(), 'job_enqueued' : 'ok' }
+    ins = enfty_tx_table.insert().values(
+        To_Address__c = OWNER_ACCOUNT,
+        Gateway_Id__c =  uuid.uuid4(),
+        Bill_Of_Lading_Id__c = sane_form['bol_id'],
+        Tx_Hash__c = tx_hash.hex())
+    conn = sqlengine.connect()
+    result = conn.execute(ins)
+    q_high.enqueue(wait_and_process_receipt, args=(tx_hash, sane_form['bol_id']))
+    return { 'tx_hash': tx_hash.hex(), 'job_enqueued' : 'ok', 'postgre id': result.inserted_primary_key }
     #response = sign_and_send_w3_transaction_transfer_type(w3, enitiumcontract, enfty_tx, OWNER_PRIVATE_KEY)
     return response
 
