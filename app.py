@@ -89,7 +89,7 @@ def mint():
     if not ipfs_response.status_code == 200:
         raise LogicError({"code": "Request Error", "description": "Token not found on IPFS host"}, 400)
     enitiumcontract = w3.eth.contract(address=CONTRACT_ADDRESS, abi=CONTRACT_ABI)
-    nonce = w3.eth.get_transaction_count(OWNER_ACCOUNT, 'pending')
+    nonce = w3.eth.get_transaction_count(OWNER_ACCOUNT)
     #nonce = 0
     app.logger.info('before sending transaction')
     enfty_tx = enitiumcontract.functions.mintNFT(sane_form['recipient_address'], ipfs_response.text
@@ -114,7 +114,6 @@ def mint():
     q_high.enqueue(wait_and_process_receipt, args=(tx_hash, sane_form['bol_id']))
     return { 'tx_hash': tx_hash.hex(), 'job_enqueued' : 'ok', 'postgre id': result.inserted_primary_key[0] }
     #response = sign_and_send_w3_transaction_transfer_type(w3, enitiumcontract, enfty_tx, OWNER_PRIVATE_KEY)
-    return response
 
 @app.route('/transfer', methods=['POST'])
 @requires_auth
