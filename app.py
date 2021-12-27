@@ -36,10 +36,12 @@ IPFS_PROJECT_ID = os.environ['IPFS_PROJECT_ID']
 IPFS_PROJECT_SECRET = os.environ['IPFS_PROJECT_SECRET']
 q_high = Queue('high', connection = conn)
 q_low = Queue('low', connection = conn)
-sqlengine = create_engine(os.environ['DATABASE_URL'], echo=True, logging_name='gatewayengine')
+DATABASE_URL=os.environ['DATABASE_URL']
+sqlengine = create_engine(DATABASE_URL.replace('postgres://', 'postgresql://', 1), logging_name='gatewayengine')
 metadata_obj = MetaData(schema='salesforce')
 metadata_obj.reflect(bind=sqlengine)
-enfty_tx_table = metadata_obj.tables['Enfty_Bol_Transaction_Data__c']
+app.logger.info('table keys : %s', metadata_obj.tables.keys())
+enfty_tx_table = metadata_obj.tables['salesforce.enfty_bol_transfer_data__c']
 
 @app.route('/')
 def index():
@@ -87,7 +89,7 @@ def mint():
     if not ipfs_response.status_code == 200:
         raise LogicError({"code": "Request Error", "description": "Token not found on IPFS host"}, 400)
     enitiumcontract = w3.eth.contract(address=CONTRACT_ADDRESS, abi=CONTRACT_ABI)
-    nonce = w3.eth.get_transaction_count(OWNER_ACCOUNT)
+    nonce = w3.eth.get_transaction_count(OWNER_ACCOUNT, 'pending')
     #nonce = 0
     app.logger.info('before sending transaction')
     enfty_tx = enitiumcontract.functions.mintNFT(sane_form['recipient_address'], ipfs_response.text
@@ -102,14 +104,15 @@ def mint():
     signed_transaction = w3.eth.account.sign_transaction(enfty_tx, OWNER_PRIVATE_KEY)
     tx_hash = w3.eth.send_raw_transaction(signed_transaction.rawTransaction)
     ins = enfty_tx_table.insert().values(
-        To_Address__c = OWNER_ACCOUNT,
-        Gateway_Id__c =  uuid.uuid4(),
-        Bill_Of_Lading_Id__c = sane_form['bol_id'],
-        Tx_Hash__c = tx_hash.hex())
+        to_address__c = OWNER_ACCOUNT,
+        gateway_id__c =  uuid.uuid4(),
+        bill_of_lading__c = sane_form['bol_id'],
+        tx_hash__c = tx_hash.hex())
     conn = sqlengine.connect()
     result = conn.execute(ins)
+    conn.close()
     q_high.enqueue(wait_and_process_receipt, args=(tx_hash, sane_form['bol_id']))
-    return { 'tx_hash': tx_hash.hex(), 'job_enqueued' : 'ok', 'postgre id': result.inserted_primary_key }
+    return { 'tx_hash': tx_hash.hex(), 'job_enqueued' : 'ok', 'postgre id': result.inserted_primary_key[0] }
     #response = sign_and_send_w3_transaction_transfer_type(w3, enitiumcontract, enfty_tx, OWNER_PRIVATE_KEY)
     return response
 
