@@ -17,7 +17,7 @@ from decorators import requires_post_params, requires_w3_access
 from classes import W3EnitiumContract
 from rq import Queue
 from worker import conn
-from sqlalchemy import create_engine, Metadata, Table
+from sqlalchemy import create_engine, MetaData, Table
 import uuid
 
 #contract : 0x855539e32608298cF253dC5bFb25043D19692f6a
@@ -37,7 +37,7 @@ IPFS_PROJECT_SECRET = os.environ['IPFS_PROJECT_SECRET']
 q_high = Queue('high', connection = conn)
 q_low = Queue('low', connection = conn)
 sqlengine = create_engine(os.environ['DATABASE_URL'], echo=True, logging_name='gatewayengine')
-metadata_obj = Metadata(schema='salesforce')
+metadata_obj = MetaData(schema='salesforce')
 metadata_obj.reflect(bind=sqlengine)
 enfty_tx_table = metadata_obj.tables['Enfty_Bol_Transaction_Data__c']
 
