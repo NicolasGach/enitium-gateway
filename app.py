@@ -98,9 +98,9 @@ def mint():
     tx = {
         'from': OWNER_ACCOUNT,
         'chainId': 3,
-        'gas': 400000,
-        #'maxFeePerGas': w3.toWei('70', 'gwei'),
-        #'maxPriorityFeePerGas': w3.toWei('2', 'gwei'),
+        'gas': 2000000,
+        'maxFeePerGas': w3.toWei('70', 'gwei'),
+        'maxPriorityFeePerGas': w3.toWei('2', 'gwei'),
         'nonce': committed_transactions
     }
     tx_uuid = uuid.uuid4()
