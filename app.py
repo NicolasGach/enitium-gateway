@@ -109,7 +109,8 @@ def mint():
         gateway_id__c =  tx_uuid,
         bill_of_lading__c = sane_form['bol_id'],
         nonce__c = committed_transactions,
-        status__c = 'Processing')
+        status__c = 'Processing',
+        type__c = 'Minting')
     conn = sqlengine.connect()
     result = conn.execute(ins)
     conn.close()
