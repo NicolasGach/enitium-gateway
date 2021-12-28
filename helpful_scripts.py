@@ -17,6 +17,8 @@ with open('EnitiumNFT.json', 'r') as f:
     json_contract = json.load(f)
 CONTRACT_ABI = json_contract["abi"]
 DATABASE_URL=os.environ['DATABASE_URL']
+OWNER_ACCOUNT = os.environ['OWNER_ACCOUNT']
+OWNER_PRIVATE_KEY = os.environ['OWNER_PRIVATE_KEY']
 sqlengine = create_engine(DATABASE_URL.replace('postgres://', 'postgresql://', 1), logging_name='gatewayengine')
 metadata_obj = MetaData(schema='salesforce')
 metadata_obj.reflect(bind=sqlengine)
@@ -50,10 +52,23 @@ def sign_and_send_w3_transaction_transfer_type(w3, contract, builtTransaction, s
     }
     return response
 
-global wait_and_process_receipt
-def wait_and_process_receipt(tx_hash, bol_id):
-    enitiumcontract = w3.eth.contract(address=CONTRACT_ADDRESS, abi=CONTRACT_ABI)
+global process_mint
+def process_mint(tx_uuid, tx, recipient_address, token_uri, bol_id):
     conn = sqlengine.connect()
+    enitiumcontract = w3.eth.contract(address=CONTRACT_ADDRESS, abi=CONTRACT_ABI)
+    enfty_tx = enitiumcontract.functions.mintNFT(recipient_address, token_uri).buildTransaction(tx)
+    signed_transaction = w3.eth.account.sign_transaction(enfty_tx, OWNER_PRIVATE_KEY)
+    tx_hash = w3.eth.send_raw_transaction(signed_transaction.rawTransaction)
+    app.logger.info('tx sent with hash : %s', tx_hash)
+    u = enfty_tx_table.update().values(
+        status__c = 'Sent',
+        tx_hash__c = tx_hash.hex()
+    ).where(and_(
+        enfty_tx_table.c.gateway_id__c == tx_uuid, 
+        enfty_tx_table.c.bill_of_lading__c == bol_id)
+    )
+    conn.execute(u)
+    app.logger.info('waiting for receipt')
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash, poll_latency=0.5)
     decoded_tx_receipt = enitiumcontract.events.Transfer().processReceipt(tx_receipt)
     app.logger.info('tx_receipt : %s', tx_receipt)
@@ -62,7 +77,8 @@ def wait_and_process_receipt(tx_hash, bol_id):
         tx_hash__c = decoded_tx_receipt[0]['transactionHash'].hex(), 
         from_address__c = decoded_tx_receipt[0]['args']['from'], 
         to_address__c = decoded_tx_receipt[0]['args']['to'], 
-        token_id__c = decoded_tx_receipt[0]['args']['tokenId']
+        token_id__c = decoded_tx_receipt[0]['args']['tokenId'],
+        status__c = 'Cleared'
     ).where(and_(
         enfty_tx_table.c.tx_hash__c == tx_hash.hex(), 
         enfty_tx_table.c.bill_of_lading__c == bol_id)

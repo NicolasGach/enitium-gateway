@@ -5,6 +5,7 @@ import json
 import re
 import requests
 from web3 import Web3, exceptions
+from web3.gas_strategies.time_based import medium_gas_price_strategy
 from eth_abi import decode_single
 from pathlib import Path
 from auth0 import AuthError, requires_auth, requires_scope
@@ -12,7 +13,7 @@ from flask import Flask, request, jsonify, abort
 from flask_cors import cross_origin
 from exceptions import AuthError, LogicError
 from logging import DEBUG
-from helpful_scripts import decrypt_sf_aes, sign_and_send_w3_transaction_transfer_type, sanitize_dict, wait_and_process_receipt
+from helpful_scripts import decrypt_sf_aes, sign_and_send_w3_transaction_transfer_type, sanitize_dict, process_mint
 from decorators import requires_post_params, requires_w3_access
 from classes import W3EnitiumContract
 from rq import Queue
@@ -26,6 +27,7 @@ import uuid
 app = Flask(__name__)
 app.logger.setLevel(DEBUG)
 w3 = Web3(Web3.HTTPProvider(os.environ['INFURA_NODE_URL']))
+w3.eth.set_gas_price_strategy(medium_gas_price_strategy)
 CONTRACT_ADDRESS = os.environ['CONTRACT_ADDRESS']
 with open('EnitiumNFT.json', 'r') as f:
     json_contract = json.load(f)
@@ -88,32 +90,31 @@ def mint():
     )
     if not ipfs_response.status_code == 200:
         raise LogicError({"code": "Request Error", "description": "Token not found on IPFS host"}, 400)
-    enitiumcontract = w3.eth.contract(address=CONTRACT_ADDRESS, abi=CONTRACT_ABI)
-    nonce = w3.eth.get_transaction_count(OWNER_ACCOUNT, 'pending')
     #nonce = 0
-    app.logger.info('before sending transaction')
-    enfty_tx = enitiumcontract.functions.mintNFT(sane_form['recipient_address'], ipfs_response.text
-    ).buildTransaction({
+    committed_transactions = w3.eth.get_transaction_count(OWNER_ACCOUNT)
+    pending_transactions = w3.eth.get_transaction_count(OWNER_ACCOUNT, 'pending')
+    app.logger.info('transaction count confirmed : {0}'.format(committed_transactions))
+    app.logger.info('transaction count with pending : {0}'.format(pending_transactions))
+    tx = {
         'from': OWNER_ACCOUNT,
         'chainId': 3,
         'gas': 400000,
-        'maxFeePerGas': w3.toWei('2', 'gwei'),
-        'maxPriorityFeePerGas': w3.toWei('1', 'gwei'),
-        'nonce': nonce
-    })
-    signed_transaction = w3.eth.account.sign_transaction(enfty_tx, OWNER_PRIVATE_KEY)
-    tx_hash = w3.eth.send_raw_transaction(signed_transaction.rawTransaction)
+        #'maxFeePerGas': w3.toWei('70', 'gwei'),
+        #'maxPriorityFeePerGas': w3.toWei('2', 'gwei'),
+        'nonce': committed_transactions
+    }
+    tx_uuid = uuid.uuid4()
     ins = enfty_tx_table.insert().values(
         to_address__c = OWNER_ACCOUNT,
-        gateway_id__c =  uuid.uuid4(),
+        gateway_id__c =  tx_uuid,
         bill_of_lading__c = sane_form['bol_id'],
-        tx_hash__c = tx_hash.hex())
+        nonce__c = committed_transactions,
+        status__c = 'Processing')
     conn = sqlengine.connect()
     result = conn.execute(ins)
     conn.close()
-    q_high.enqueue(wait_and_process_receipt, args=(tx_hash, sane_form['bol_id']))
-    return { 'tx_hash': tx_hash.hex(), 'job_enqueued' : 'ok', 'postgre id': result.inserted_primary_key[0] }
-    #response = sign_and_send_w3_transaction_transfer_type(w3, enitiumcontract, enfty_tx, OWNER_PRIVATE_KEY)
+    q_high.enqueue(process_mint, args=(tx_uuid, tx, sane_form['recipient_address'], ipfs_response.text, sane_form['bol_id']))
+    return { 'tx_uuid': tx_uuid, 'job_enqueued' : 'ok', 'postgre id': result.inserted_primary_key[0] }
 
 @app.route('/transfer', methods=['POST'])
 @requires_auth
