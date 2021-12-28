@@ -59,12 +59,12 @@ def process_mint(tx_uuid, tx, recipient_address, token_uri, bol_id):
     enfty_tx = enitiumcontract.functions.mintNFT(recipient_address, token_uri).buildTransaction(tx)
     signed_transaction = w3.eth.account.sign_transaction(enfty_tx, OWNER_PRIVATE_KEY)
     tx_hash = w3.eth.send_raw_transaction(signed_transaction.rawTransaction)
-    app.logger.info('tx sent with hash : %s', tx_hash)
+    app.logger.info('tx sent with hash : %s', tx_hash.hex())
     u = enfty_tx_table.update().values(
         status__c = 'Sent',
         tx_hash__c = tx_hash.hex()
     ).where(and_(
-        enfty_tx_table.c.gateway_id__c == tx_uuid, 
+        enfty_tx_table.c.gateway_id__c == str(tx_uuid), 
         enfty_tx_table.c.bill_of_lading__c == bol_id)
     )
     conn.execute(u)
