@@ -78,6 +78,7 @@ PyYAML = "==6.0"
 Werkzeug = "==0.16.0"
 rq = "*"
 SQLAlchemy = "==1.4.29"
+apscheduler = "*"
 
 [dev-packages]
 
