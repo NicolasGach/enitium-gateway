@@ -147,7 +147,8 @@ def transfer():
     }
     tx_uuid = uuid.uuid4()
     ins = enfty_tx_table.insert().values(
-        to_address__c = sane_form['from_address'],
+        from_address__c = sane_form['from_address'],
+        to_address__c = sane_form['to_address'],
         gateway_id__c =  tx_uuid,
         bill_of_lading__c = sane_form['bol_id'],
         nonce__c = committed_transactions,
@@ -161,8 +162,8 @@ def transfer():
         tx, 
         sane_form['from_address'],
         from_pk,
-        sane_form['recipient_address'], 
-        sane_form['tokenId'],
+        sane_form['to_address'], 
+        sane_form['token_id'],
         sane_form['bol_id']
     ))
     return { 'tx_uuid': tx_uuid, 'job_enqueued' : 'ok', 'postgre_id': result.inserted_primary_key[0] }
