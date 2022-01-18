@@ -87,17 +87,17 @@ def process_mint(tx_uuid, tx, recipient_address, token_uri, bol_id):
     conn.close()
 
 global process_transfer
-def process_transfer(tx_uuid, tx, from_adress, from_pk, recipient_address, token_id, bol_id):
+def process_transfer(tx_uuid, tx, from_address, from_pk, recipient_address, token_id, bol_id):
     conn = sqlengine.connect()
     enitiumcontract = w3.eth.contract(address=CONTRACT_ADDRESS, abi=CONTRACT_ABI)
     enfty_tx = enitiumcontract.functions.transferFrom(
-        from_adress,
+        from_address,
         recipient_address,
         int(token_id)
     ).buildTransaction(tx)
     signed_transaction = w3.eth.account.sign_transaction(enfty_tx, from_pk)
     tx_hash = w3.eth.send_raw_transaction(signed_transaction.rawTransaction)
-    app.logger.ingo('tx transfer sent with has : %s', tx_hash.hex())
+    app.logger.info('tx transfer sent with has : %s', tx_hash.hex())
     u = enfty_tx_table.update().values(
         status__c = 'Sent',
         tx_hash__c = tx_hash.hex()
