@@ -13,7 +13,7 @@ from flask import Flask, request, jsonify, abort
 from flask_cors import cross_origin
 from exceptions import AuthError, LogicError
 from logging import DEBUG
-from helpful_scripts import decrypt_sf_aes, sign_and_send_w3_transaction_transfer_type, sanitize_dict, process_mint
+from helpful_scripts import decrypt_sf_aes, sign_and_send_w3_transaction_transfer_type, sanitize_dict, process_mint, process_transfer
 from decorators import requires_post_params, requires_w3_access
 from classes import W3EnitiumContract
 from rq import Queue
@@ -157,7 +157,7 @@ def transfer():
     conn = sqlengine.connect()
     result = conn.execute(ins)
     conn.close()
-    q_high.enqueue(process_mint, args=(
+    q_high.enqueue(process_transfer, args=(
         tx_uuid, 
         tx, 
         sane_form['from_address'],
