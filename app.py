@@ -115,11 +115,11 @@ def mint():
     result = conn.execute(ins)
     conn.close()
     q_high.enqueue(process_mint, args=(tx_uuid, tx, sane_form['recipient_address'], ipfs_response.text, sane_form['bol_id']))
-    return { 'tx_uuid': tx_uuid, 'job_enqueued' : 'ok', 'postgre id': result.inserted_primary_key[0] }
+    return { 'tx_uuid': tx_uuid, 'job_enqueued' : 'ok', 'postgre_id': result.inserted_primary_key[0] }
 
 @app.route('/transfer', methods=['POST'])
 @requires_auth
-@requires_post_params(['from_address', 'from_pk', 'to_address', 'token_id', 'vector'])
+@requires_post_params(['from_address', 'from_pk', 'to_address', 'token_id', 'vector', 'bol_id'])
 def transfer():
     if not requires_scope('access:gateway'):
         raise AuthError({"code": "Unauthorized", "description": "You don't have access to this resource"}, 403)
@@ -128,28 +128,44 @@ def transfer():
     sane_form = sanitize_dict(request.form)
     app.logger.info('sane_form : %s', sane_form)
     from_pk = decrypt_sf_aes(sane_form['from_pk'], os.environ['AES_KEY'], sane_form['vector'])
-    if w3.isAddress(sane_form['from_address']) and w3.isAddress(sane_form['to_address']):
-        app.logger.info('Before get balance ...')
-        if w3.eth.get_balance(sane_form['from_address']) > 200000:
-            enitiumcontract = w3.eth.contract(address=CONTRACT_ADDRESS, abi=CONTRACT_ABI)
-            nonce = w3.eth.get_transaction_count(sane_form['from_address'])
-            app.logger.info('before sending transaction')
-            enfty_tx = enitiumcontract.functions.transferFrom(
-                sane_form['from_address'],
-                sane_form['to_address'],
-                int(sane_form['token_id'])
-            ).buildTransaction({
-                'from': sane_form['from_address'],
-                'chainId': 3,
-                'gas': 200000,
-                'maxFeePerGas': w3.toWei('2', 'gwei'),
-                'maxPriorityFeePerGas': w3.toWei('1', 'gwei'),
-                'nonce': nonce
-            })
-            response = sign_and_send_w3_transaction_transfer_type(w3, enitiumcontract, enfty_tx, from_pk)
-            return response
+    if not w3.isAddress(sane_form['from_address']) or not w3.isAddress(sane_form['to_address']):
+        raise LogicError({"code": "Request Error", "description": "Bad request, input not a valid address"}, 400)
+    app.logger.info('Before get balance ...')
+    if not w3.eth.get_balance(sane_form['from_address']) > 200000:
         raise LogicError({"code": "Request Error", "description": "The sender account has no funds for transfer"}, 400)
-    raise LogicError({"code": "Request Error", "description": "Bad request, input not a valid address"}, 400)
+    committed_transactions = w3.eth.get_transaction_count(OWNER_ACCOUNT)
+    pending_transactions = w3.eth.get_transaction_count(OWNER_ACCOUNT, 'pending')
+    app.logger.info('transaction count confirmed : {0}'.format(committed_transactions))
+    app.logger.info('transaction count with pending : {0}'.format(pending_transactions))
+    tx = {
+        'from': sane_form['from_address'],
+        'chainId': 3,
+        'gas': 2000000,
+        'maxFeePerGas': w3.toWei('70', 'gwei'),
+        'maxPriorityFeePerGas': w3.toWei('2', 'gwei'),
+        'nonce': committed_transactions
+    }
+    tx_uuid = uuid.uuid4()
+    ins = enfty_tx_table.insert().values(
+        to_address__c = sane_form['from_address'],
+        gateway_id__c =  tx_uuid,
+        bill_of_lading__c = sane_form['bol_id'],
+        nonce__c = committed_transactions,
+        status__c = 'Processing',
+        type__c = 'Transfer')
+    conn = sqlengine.connect()
+    result = conn.execute(ins)
+    conn.close()
+    q_high.enqueue(process_mint, args=(
+        tx_uuid, 
+        tx, 
+        sane_form['from_address'],
+        from_pk,
+        sane_form['recipient_address'], 
+        sane_form['tokenId'],
+        sane_form['bol_id']
+    ))
+    return { 'tx_uuid': tx_uuid, 'job_enqueued' : 'ok', 'postgre_id': result.inserted_primary_key[0] }
 
 @app.route('/burn', methods=['POST'])
 @requires_auth

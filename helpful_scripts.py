@@ -68,7 +68,7 @@ def process_mint(tx_uuid, tx, recipient_address, token_uri, bol_id):
         enfty_tx_table.c.bill_of_lading__c == bol_id)
     )
     conn.execute(u)
-    app.logger.info('waiting for receipt')
+    app.logger.info('Waiting for receipt')
     tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash, poll_latency=0.5)
     decoded_tx_receipt = enitiumcontract.events.Transfer().processReceipt(tx_receipt)
     app.logger.info('tx_receipt : %s', tx_receipt)
@@ -85,6 +85,45 @@ def process_mint(tx_uuid, tx, recipient_address, token_uri, bol_id):
     )
     conn.execute(u)
     conn.close()
+
+global process_transfer
+def process_transfer(tx_uuid, tx, from_adress, from_pk, recipient_address, token_id, bol_id):
+    conn = sqlengine.connect()
+    enitiumcontract = w3.eth.contract(address=CONTRACT_ADDRESS, abi=CONTRACT_ABI)
+    enfty_tx = enitiumcontract.functions.transferFrom(
+        from_adress,
+        recipient_address,
+        int(token_id)
+    ).buildTransaction(tx)
+    signed_transaction = w3.eth.account.sign_transaction(enfty_tx, from_pk)
+    tx_hash = w3.eth.send_raw_transaction(signed_transaction.rawTransaction)
+    app.logger.ingo('tx transfer sent with has : %s', tx_hash.hex())
+    u = enfty_tx_table.update().values(
+        status__c = 'Sent',
+        tx_hash__c = tx_hash.hex()
+    ).where(and_(
+        enfty_tx_table.c.gateway_id__c == str(tx_uuid),
+        enfty_tx_table.c.bill_of_lading__c == bol_id)
+    )
+    conn.execute(u)
+    app.logger.info('Waiting for receipt')
+    tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash, poll_latency=0.5)
+    decoded_tx_receipt = enitiumcontract.events.Transfer().processReceipt(tx_receipt)
+    app.logger.info('tx_receipt : %s', tx_receipt)
+    app.logger.info('tx_deceipt decoded : %s', decoded_tx_receipt)
+    u = enfty_tx_table.update().values(
+        tx_hash__c = decoded_tx_receipt[0]['transactionHash'].hex(),
+        from_address__c = decoded_tx_receipt[0]['args']['from'],
+        to_address__c = decoded_tx_receipt[0]['args']['to'],
+        token_id__c = decoded_tx_receipt[0]['args']['tokenId'],
+        status__c = 'Cleared'
+    ).where(and_(
+        enfty_tx_table.c.tx_hash__c == tx_hash.hex(),
+        enfty_tx_table.c.bill_of_lading__c == bol_id
+    ))
+    conn.execute(u)
+    conn.close()
+
 
 def sanitize_dict(dict):
     sane_form = {}
