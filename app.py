@@ -91,24 +91,18 @@ def mint():
     if not ipfs_response.status_code == 200:
         raise LogicError({"code": "Request Error", "description": "Token not found on IPFS host"}, 400)
     #nonce = 0
-    committed_transactions = w3.eth.get_transaction_count(OWNER_ACCOUNT)
-    pending_transactions = w3.eth.get_transaction_count(OWNER_ACCOUNT, 'pending')
-    app.logger.info('transaction count confirmed : {0}'.format(committed_transactions))
-    app.logger.info('transaction count with pending : {0}'.format(pending_transactions))
     tx = {
         'from': OWNER_ACCOUNT,
         'chainId': 3,
         'gas': 2000000,
         'maxFeePerGas': w3.toWei('70', 'gwei'),
-        'maxPriorityFeePerGas': w3.toWei('2', 'gwei'),
-        'nonce': committed_transactions
+        'maxPriorityFeePerGas': w3.toWei('2', 'gwei')
     }
     tx_uuid = uuid.uuid4()
     ins = enfty_tx_table.insert().values(
         to_address__c = OWNER_ACCOUNT,
         gateway_id__c =  tx_uuid,
         bill_of_lading__c = sane_form['bol_id'],
-        nonce__c = committed_transactions,
         status__c = 'Processing',
         type__c = 'Minting')
     conn = sqlengine.connect()
@@ -133,17 +127,12 @@ def transfer():
     app.logger.info('Before get balance ...')
     if not w3.eth.get_balance(sane_form['from_address']) > 200000:
         raise LogicError({"code": "Request Error", "description": "The sender account has no funds for transfer"}, 400)
-    committed_transactions = w3.eth.get_transaction_count(OWNER_ACCOUNT)
-    pending_transactions = w3.eth.get_transaction_count(OWNER_ACCOUNT, 'pending')
-    app.logger.info('transaction count confirmed : {0}'.format(committed_transactions))
-    app.logger.info('transaction count with pending : {0}'.format(pending_transactions))
     tx = {
         'from': sane_form['from_address'],
         'chainId': 3,
         'gas': 2000000,
         'maxFeePerGas': w3.toWei('70', 'gwei'),
-        'maxPriorityFeePerGas': w3.toWei('2', 'gwei'),
-        'nonce': committed_transactions
+        'maxPriorityFeePerGas': w3.toWei('2', 'gwei')
     }
     tx_uuid = uuid.uuid4()
     ins = enfty_tx_table.insert().values(
@@ -151,7 +140,6 @@ def transfer():
         to_address__c = sane_form['to_address'],
         gateway_id__c =  tx_uuid,
         bill_of_lading__c = sane_form['bol_id'],
-        nonce__c = committed_transactions,
         status__c = 'Processing',
         type__c = 'Transfer')
     conn = sqlengine.connect()
