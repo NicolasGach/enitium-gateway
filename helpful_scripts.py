@@ -25,7 +25,6 @@ Session = sessionmaker(sqlengine)
 metadata_obj = MetaData(schema='salesforce')
 metadata_obj.reflect(bind=sqlengine)
 app.logger.info('table keys : %s', metadata_obj.tables.keys())
-salesforce = declarative_base()
 enfty_tx_table = metadata_obj.tables['salesforce.enfty_bol_transfer_data__c']
 
 def decrypt_sf_aes(content, key, vector):
