@@ -106,7 +106,7 @@ def process_transfer(tx_uuid, tx, from_address, from_pk, recipient_address, toke
     pending_transactions = w3.eth.get_transaction_count(from_address, 'pending')
     app.logger.info('transaction count confirmed : {0}'.format(committed_transactions))
     app.logger.info('transaction count with pending : {0}'.format(pending_transactions))
-    db_nonce = conn.execute(select([func.max(enfty_tx_table.c.nonce__c)]).where(enfty_tx_table.c.from_address__c == from_address))
+    db_nonce = conn.execute(select([func.max(enfty_tx_table.c.nonce__c)]).where(enfty_tx_table.c.from_address__c == from_address)).one()
     app.logger.info('nonce user : %s', db_nonce)
     nonce = int(db_nonce) + 1
     tx['nonce'] = nonce
