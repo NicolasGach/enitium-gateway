@@ -19,6 +19,9 @@ from classes import W3EnitiumContract
 from rq import Queue
 from worker import conn
 from sqlalchemy import create_engine, MetaData, Table
+from sqlalchemy import MetaData, Table, create_engine, and_, func
+from sqlalchemy.sql import select
+from sqlalchemy.orm import sessionmaker
 import uuid
 
 #contract : 0x855539e32608298cF253dC5bFb25043D19692f6a
@@ -49,6 +52,15 @@ enfty_tx_table = metadata_obj.tables['salesforce.enfty_bol_transfer_data__c']
 def index():
     response = {}
     response['callresponse'] = 'ok home'
+    return jsonify(response)
+
+@app.route('/test_nonce')
+def test_nonce():
+    conn = sqlengine.connect()
+    db_nonce = conn.execute(select([func.max(enfty_tx_table.c.nonce__c)]).where(enfty_tx_table.c.from_address__c == from_address)).scalar()
+    app.logger.info('nonce user : %s', db_nonce)
+    nonce = (int(db_nonce) + 1) if not db_nonce is None else 1
+    response = {"nonce": nonce}
     return jsonify(response)
 
 @app.route('/post_ipfs', methods=['POST'])
