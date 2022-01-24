@@ -25,6 +25,7 @@ Session = sessionmaker(sqlengine)
 metadata_obj = MetaData(schema='salesforce')
 metadata_obj.reflect(bind=sqlengine)
 app.logger.info('table keys : %s', metadata_obj.tables.keys())
+salesforce = declarative_base()
 enfty_tx_table = metadata_obj.tables['salesforce.enfty_bol_transfer_data__c']
 
 def decrypt_sf_aes(content, key, vector):
@@ -63,7 +64,7 @@ def process_mint(tx_uuid, tx, recipient_address, token_uri, bol_id):
     app.logger.info('transaction count confirmed : {0}'.format(committed_transactions))
     app.logger.info('transaction count with pending : {0}'.format(pending_transactions))
     with Session() as session:
-        db_nonce = session.query(func.max(enfty_tx_table.nonce__c)).filter_by(from_address__c = OWNER_ACCOUNT)
+        db_nonce = session.query(func.max(metadata_obj.enfty_bol_transfer_data__c.nonce__c)).filter_by(from_address__c = OWNER_ACCOUNT)
         nonce = db_nonce + 1
         app.logger.info('nonce user : %s', nonce)
     tx['nonce'] = nonce
@@ -107,7 +108,7 @@ def process_transfer(tx_uuid, tx, from_address, from_pk, recipient_address, toke
     app.logger.info('transaction count confirmed : {0}'.format(committed_transactions))
     app.logger.info('transaction count with pending : {0}'.format(pending_transactions))
     with Session() as session:
-        db_nonce = session.query(func.max(salesforce.enfty_bol_transfer_data__c.nonce__c)).filter_by(from_address__c = from_address).scalar()
+        db_nonce = session.query(func.max(metadata_obj.enfty_bol_transfer_data__c.nonce__c)).filter_by(from_address__c = from_address).scalar()
         app.logger.info('nonce user : %s', db_nonce)
         nonce = int(db_nonce) + 1
     tx['nonce'] = nonce
