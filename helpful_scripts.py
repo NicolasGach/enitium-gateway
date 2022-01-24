@@ -107,7 +107,7 @@ def process_transfer(tx_uuid, tx, from_address, from_pk, recipient_address, toke
     app.logger.info('transaction count confirmed : {0}'.format(committed_transactions))
     app.logger.info('transaction count with pending : {0}'.format(pending_transactions))
     with Session() as session:
-        db_nonce = session.query(func.max(enfty_tx_table.c.nonce__c)).filter_by(from_address__c = from_address).scalar()
+        db_nonce = session.query(func.max(enfty_tx_table.c.nonce__c)).filter(enfty_tx_table.c.from_address__c == from_address)
         app.logger.info('nonce user : %s', db_nonce)
         nonce = int(db_nonce) + 1
     tx['nonce'] = nonce
