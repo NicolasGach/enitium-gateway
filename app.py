@@ -54,10 +54,10 @@ def index():
     response['callresponse'] = 'ok home'
     return jsonify(response)
 
-@app.route('/test_nonce')
-def test_nonce():
+@app.route('/test_nonce/<testAddress>', methods=['GET'])
+def test_nonce(testAddress):
     conn = sqlengine.connect()
-    from_address = "0xCb763Fb9804774B87A54659bd32Cdb89c5153C12"
+    from_address = testAddress
     db_nonce = conn.execute(select([func.max(enfty_tx_table.c.nonce__c)]).where(enfty_tx_table.c.from_address__c == from_address)).scalar()
     app.logger.info('nonce user : %s', db_nonce)
     nonce = (int(db_nonce) + 1) if not db_nonce is None else 1
