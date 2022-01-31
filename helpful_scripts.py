@@ -62,10 +62,9 @@ def process_mint(tx_uuid, tx, recipient_address, token_uri, bol_id):
     pending_transactions = w3.eth.get_transaction_count(OWNER_ACCOUNT, 'pending')
     app.logger.info('transaction count confirmed : {0}'.format(committed_transactions))
     app.logger.info('transaction count with pending : {0}'.format(pending_transactions))
-    with Session() as session:
-        db_nonce = session.query(func.max(metadata_obj.enfty_bol_transfer_data__c.nonce__c)).filter_by(from_address__c = OWNER_ACCOUNT)
-        nonce = db_nonce + 1
-        app.logger.info('nonce user : %s', nonce)
+    db_nonce = conn.execute(select([func.max(enfty_tx_table.c.nonce__c)]).where(enfty_tx_table.c.from_address__c == OWNER_ACCOUNT)).scalar()
+    app.logger.info('nonce user : %s', db_nonce)
+    nonce = (int(db_nonce) + 1) if not db_nonce is None else 1
     tx['nonce'] = nonce
     enfty_tx = enitiumcontract.functions.mintNFT(recipient_address, token_uri).buildTransaction(tx)
     signed_transaction = w3.eth.account.sign_transaction(enfty_tx, OWNER_PRIVATE_KEY)
