@@ -3,7 +3,7 @@ from Crypto.Util.Padding import unpad
 import base64
 import os
 import json
-from flask import Flask
+from flask import Flask, jsonify
 from logging import DEBUG
 from web3 import Web3
 from sqlalchemy import MetaData, Table, create_engine, and_, func
@@ -65,11 +65,23 @@ def process_mint(tx_uuid, tx, recipient_address, token_uri, bol_id):
     db_nonce = conn.execute(select([func.max(enfty_tx_table.c.nonce__c)]).where(enfty_tx_table.c.from_address__c == OWNER_ACCOUNT)).scalar()
     app.logger.info('nonce user : %s', db_nonce)
     nonce = (int(db_nonce) + 1) if not db_nonce is None else 1
+    #if nonce < committed_transactions: nonce = committed_transactions
     tx['nonce'] = nonce
     enfty_tx = enitiumcontract.functions.mintNFT(recipient_address, token_uri).buildTransaction(tx)
     signed_transaction = w3.eth.account.sign_transaction(enfty_tx, OWNER_PRIVATE_KEY)
-    tx_hash = w3.eth.send_raw_transaction(signed_transaction.rawTransaction)
-    app.logger.info('tx sent with hash : %s', tx_hash.hex())
+    try:
+        tx_hash = w3.eth.send_raw_transaction(signed_transaction.rawTransaction)
+    except ValueError as ve:
+        u = enfty_tx_table.update().values(
+            status__c = 'Failed',
+            error_code__c = str(ve.code),
+            error_message__c = str(ve.message)
+        ).where(
+            gateway_id__c = str(tx_uuid)
+        )
+        conn.exectue(u)
+        conn.close()
+    app.logger.info('tx sent with hash : %s and nonce : %s', tx_hash.hex(), nonce)
     u = enfty_tx_table.update().values(
         status__c = 'Sent',
         tx_hash__c = tx_hash.hex(),
