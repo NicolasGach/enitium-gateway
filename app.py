@@ -39,6 +39,8 @@ OWNER_ACCOUNT = os.environ['OWNER_ACCOUNT']
 OWNER_PRIVATE_KEY = os.environ['OWNER_PRIVATE_KEY']
 IPFS_PROJECT_ID = os.environ['IPFS_PROJECT_ID']
 IPFS_PROJECT_SECRET = os.environ['IPFS_PROJECT_SECRET']
+MAX_FEE_PER_GAS = os.environ['MAX_FEE_PER_GAS_GWEI']
+MAX_PRIORITY_FEE_PER_GAS = os.environ['MAX_PRIORITY_FEE_PER_GAS']
 q_high = Queue('high', connection = conn)
 q_low = Queue('low', connection = conn)
 DATABASE_URL=os.environ['DATABASE_URL']
@@ -103,16 +105,21 @@ def mint():
     )
     if not ipfs_response.status_code == 200:
         raise LogicError({"code": "Request Error", "description": "Token not found on IPFS host"}, 400)
-    #nonce = 0
+    nonce = -1
+    if 'nonce' in sane_form:
+        app.logger.info('Nonce forced in transaction with value : {0}'.format(nonce))
+        nonce = sane_form['nonce']
     tx = {
         'from': OWNER_ACCOUNT,
         'chainId': 3,
         'gas': 2000000,
-        'maxFeePerGas': w3.toWei('70', 'gwei'),
-        'maxPriorityFeePerGas': w3.toWei('2', 'gwei')
+        'maxFeePerGas': w3.toWei(MAX_FEE_PER_GAS, 'gwei'),
+        'maxPriorityFeePerGas': w3.toWei(MAX_PRIORITY_FEE_PER_GAS, 'gwei'),
+        'nonce': int(nonce)
     }
     tx_uuid = uuid.uuid4()
     ins = enfty_tx_table.insert().values(
+        sent_from__c = OWNER_ACCOUNT,
         to_address__c = OWNER_ACCOUNT,
         gateway_id__c =  tx_uuid,
         bill_of_lading__c = sane_form['bol_id'],
@@ -149,6 +156,7 @@ def transfer():
     }
     tx_uuid = uuid.uuid4()
     ins = enfty_tx_table.insert().values(
+        sent_from__c = sane_form['from_address'],
         from_address__c = sane_form['from_address'],
         to_address__c = sane_form['to_address'],
         gateway_id__c =  tx_uuid,

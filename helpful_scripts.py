@@ -20,6 +20,7 @@ CONTRACT_ABI = json_contract["abi"]
 DATABASE_URL=os.environ['DATABASE_URL']
 OWNER_ACCOUNT = os.environ['OWNER_ACCOUNT']
 OWNER_PRIVATE_KEY = os.environ['OWNER_PRIVATE_KEY']
+FORCE_GAS_MULTIPLIER = os.environ['FORCE_GAS_MULTIPLIER']
 sqlengine = create_engine(DATABASE_URL.replace('postgres://', 'postgresql://', 1), logging_name='gatewayengine')
 Session = sessionmaker(sqlengine)
 metadata_obj = MetaData(schema='salesforce')
@@ -61,25 +62,28 @@ def process_mint(tx_uuid, tx, recipient_address, token_uri, bol_id):
     committed_txs = w3.eth.get_transaction_count(OWNER_ACCOUNT)
     pending_txs = w3.eth.get_transaction_count(OWNER_ACCOUNT, 'pending')
     app.logger.info('transaction count confirmed : {0}, transaction count with pending : {1}'.format(committed_txs, pending_txs))
-    db_nonce = get_db_nonce(conn, enfty_tx_table, OWNER_ACCOUNT)
-    db_highest_failed_nonce = get_db_highest_failed_nonce(conn, enfty_tx_table, OWNER_ACCOUNT)
-    app.logger.info('nonce user : {0}, highest failed nonce user : {1}'.format(db_nonce, db_highest_failed_nonce))
-    nonce = (int(db_nonce) + 1) if not db_nonce is None else 1
-    if nonce < committed_txs: 
-        tx['nonce'] = committed_txs
-    if db_highest_failed_nonce == pending_txs:
-        tx['nonce'] = db_highest_failed_nonce
-        tx['gas'] = tx['gas'] * 10
+    if tx['nonce'] == -1:
+        db_nonce = get_db_nonce(conn, enfty_tx_table, OWNER_ACCOUNT)
+        db_highest_failed_nonce = get_db_highest_failed_nonce(conn, enfty_tx_table, OWNER_ACCOUNT)
+        app.logger.info('nonce user : {0}, highest failed nonce user : {1}'.format(db_nonce, db_highest_failed_nonce))
+        computed_nonce = (int(db_nonce) + 1) if not db_nonce is None else 1
+        if computed_nonce < committed_txs: 
+            tx['nonce'] = committed_txs
+        if db_highest_failed_nonce == pending_txs:
+            tx['nonce'] = db_highest_failed_nonce
+            tx['gas'] = tx['gas'] * FORCE_GAS_MULTIPLIER
+    else:
+        tx['gas'] = tx['gas'] * FORCE_GAS_MULTIPLIER
     enfty_tx = enitiumcontract.functions.mintNFT(recipient_address, token_uri).buildTransaction(tx)
     signed_transaction = w3.eth.account.sign_transaction(enfty_tx, OWNER_PRIVATE_KEY)
     try:
         app.logger.info('about to send transaction with gas : {0}'.format(tx['gas']))
         tx_hash = w3.eth.send_raw_transaction(signed_transaction.rawTransaction)
-        app.logger.info('tx sent with hash : %s and nonce : %s', tx_hash.hex(), nonce)
+        app.logger.info('tx sent with hash : %s and nonce : %s', tx_hash.hex(), tx['nonce'])
         u = enfty_tx_table.update().values(
             status__c = 'Sent',
             tx_hash__c = tx_hash.hex(),
-            nonce__c = nonce
+            nonce__c = tx['nonce']
         ).where(and_(
             enfty_tx_table.c.gateway_id__c == str(tx_uuid), 
             enfty_tx_table.c.bill_of_lading__c == bol_id)
@@ -103,6 +107,7 @@ def process_mint(tx_uuid, tx, recipient_address, token_uri, bol_id):
         conn.execute(u)
         conn.close()
     except ValueError as ve:
+        app.logger.info('ValueError thrown with value : {0}'.format(ve))
         u = enfty_tx_table.update().values(
             status__c = 'Failed',
             error_code__c = str(ve.args[0]['code']),
@@ -113,6 +118,7 @@ def process_mint(tx_uuid, tx, recipient_address, token_uri, bol_id):
         conn.execute(u)
         conn.close()
     except exceptions.TimeExhausted as te:
+        app.logger.info('TimeExhausted error thrown with value : {0}'.format(te))
         u = enfty_tx_table.update().values(
             status__c = 'Failed',
             error_code__c = "0",
@@ -180,7 +186,7 @@ def get_db_nonce(conn, tx_table, from_address):
         select(
             [func.max(tx_table.c.nonce__c)]
         ).where(
-            tx_table.c.from_address__c == from_address
+            tx_table.c.sent_from__c == from_address
         )
     ).scalar()
     return db_nonce
@@ -191,7 +197,7 @@ def get_db_highest_failed_nonce(conn, tx_table, from_address):
             [func.max(tx_table.c.nonce__c)]
         ).where(
             and_(
-                tx_table.c.from_address__c == from_address,
+                tx_table.c.sent_from__c == from_address,
                 tx_table.c.status__c == 'Failed'
             )
         )
