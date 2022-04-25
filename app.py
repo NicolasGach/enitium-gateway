@@ -40,7 +40,7 @@ OWNER_PRIVATE_KEY = os.environ['OWNER_PRIVATE_KEY']
 IPFS_PROJECT_ID = os.environ['IPFS_PROJECT_ID']
 IPFS_PROJECT_SECRET = os.environ['IPFS_PROJECT_SECRET']
 MAX_FEE_PER_GAS = os.environ['MAX_FEE_PER_GAS_GWEI']
-MAX_PRIORITY_FEE_PER_GAS = os.environ['MAX_PRIORITY_FEE_PER_GAS']
+MAX_PRIORITY_FEE_PER_GAS = os.environ['MAX_PRIORITY_FEE_PER_GAS_GWEI']
 q_high = Queue('high', connection = conn)
 q_low = Queue('low', connection = conn)
 DATABASE_URL=os.environ['DATABASE_URL']
