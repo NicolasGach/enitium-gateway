@@ -65,7 +65,7 @@ def process_mint(tx_uuid, tx, recipient_address, token_uri, bol_id):
     db_nonce = conn.execute(select([func.max(enfty_tx_table.c.nonce__c)]).where(enfty_tx_table.c.from_address__c == OWNER_ACCOUNT)).scalar()
     app.logger.info('nonce user : %s', db_nonce)
     nonce = (int(db_nonce) + 1) if not db_nonce is None else 1
-    #if nonce < committed_transactions: nonce = committed_transactions
+    if nonce < committed_transactions: nonce = committed_transactions
     tx['nonce'] = nonce
     enfty_tx = enitiumcontract.functions.mintNFT(recipient_address, token_uri).buildTransaction(tx)
     signed_transaction = w3.eth.account.sign_transaction(enfty_tx, OWNER_PRIVATE_KEY)
