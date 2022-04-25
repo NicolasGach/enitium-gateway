@@ -62,13 +62,18 @@ def process_mint(tx_uuid, tx, recipient_address, token_uri, bol_id):
     pending_txs = w3.eth.get_transaction_count(OWNER_ACCOUNT, 'pending')
     app.logger.info('transaction count confirmed : {0}, transaction count with pending : {1}'.format(committed_txs, pending_txs))
     db_nonce = get_db_nonce(conn, enfty_tx_table, OWNER_ACCOUNT)
-    app.logger.info('nonce user : %s', db_nonce)
+    db_highest_failed_nonce = get_db_highest_failed_nonce(conn, enfty_tx_table, OWNER_ACCOUNT)
+    app.logger.info('nonce user : {0}, highest failed nonce user : {1}'.format(db_nonce, db_highest_failed_nonce))
     nonce = (int(db_nonce) + 1) if not db_nonce is None else 1
-    if nonce < committed_txs: nonce = committed_txs
-    tx['nonce'] = nonce
+    if nonce < committed_txs: 
+        tx['nonce'] = committed_txs
+    if db_highest_failed_nonce == pending_txs:
+        tx['nonce'] = db_highest_failed_nonce
+        tx['gas'] = tx['gas'] * 10
     enfty_tx = enitiumcontract.functions.mintNFT(recipient_address, token_uri).buildTransaction(tx)
     signed_transaction = w3.eth.account.sign_transaction(enfty_tx, OWNER_PRIVATE_KEY)
     try:
+        app.logger.info('about to send transaction with gas : {0}'.format(tx['gas']))
         tx_hash = w3.eth.send_raw_transaction(signed_transaction.rawTransaction)
         app.logger.info('tx sent with hash : %s and nonce : %s', tx_hash.hex(), nonce)
         u = enfty_tx_table.update().values(
@@ -173,9 +178,22 @@ def sanitize_dict(dict):
 def get_db_nonce(conn, tx_table, from_address):
     db_nonce = conn.execute(
         select(
-            [func.max(enfty_tx_table.c.nonce__c)]
+            [func.max(tx_table.c.nonce__c)]
         ).where(
-            enfty_tx_table.c.from_address__c == OWNER_ACCOUNT
+            tx_table.c.from_address__c == from_address
         )
     ).scalar()
     return db_nonce
+
+def get_db_highest_failed_nonce(conn, tx_table, from_address):
+    db_highest_failed = conn.execute(
+        select(
+            [func.max(tx_table.c.nonce__c)]
+        ).where(
+            and_(
+                tx_table.c.from_address__c == from_address,
+                tx_table.c.status__c == 'Failed'
+            )
+        )
+    ).scalar()
+    return db_highest_failed
