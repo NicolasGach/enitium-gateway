@@ -20,7 +20,7 @@ CONTRACT_ABI = json_contract["abi"]
 DATABASE_URL=os.environ['DATABASE_URL']
 OWNER_ACCOUNT = os.environ['OWNER_ACCOUNT']
 OWNER_PRIVATE_KEY = os.environ['OWNER_PRIVATE_KEY']
-FORCE_GAS_MULTIPLIER = os.environ['FORCE_GAS_MULTIPLIER']
+FORCE_GAS_MULTIPLIER = int(os.environ['FORCE_GAS_MULTIPLIER'])
 sqlengine = create_engine(DATABASE_URL.replace('postgres://', 'postgresql://', 1), logging_name='gatewayengine')
 Session = sessionmaker(sqlengine)
 metadata_obj = MetaData(schema='salesforce')
