@@ -5,7 +5,7 @@ import os
 import json
 from flask import Flask, jsonify
 from logging import DEBUG
-from web3 import Web3
+from web3 import Web3, exceptions
 from sqlalchemy import MetaData, Table, create_engine, and_, func
 from sqlalchemy.sql import select
 from sqlalchemy.orm import sessionmaker
@@ -58,14 +58,13 @@ global process_mint
 def process_mint(tx_uuid, tx, recipient_address, token_uri, bol_id):
     conn = sqlengine.connect()
     enitiumcontract = w3.eth.contract(address=CONTRACT_ADDRESS, abi=CONTRACT_ABI)
-    committed_transactions = w3.eth.get_transaction_count(OWNER_ACCOUNT)
-    pending_transactions = w3.eth.get_transaction_count(OWNER_ACCOUNT, 'pending')
-    app.logger.info('transaction count confirmed : {0}'.format(committed_transactions))
-    app.logger.info('transaction count with pending : {0}'.format(pending_transactions))
-    db_nonce = conn.execute(select([func.max(enfty_tx_table.c.nonce__c)]).where(enfty_tx_table.c.from_address__c == OWNER_ACCOUNT)).scalar()
+    committed_txs = w3.eth.get_transaction_count(OWNER_ACCOUNT)
+    pending_txs = w3.eth.get_transaction_count(OWNER_ACCOUNT, 'pending')
+    app.logger.info('transaction count confirmed : {0}, transaction count with pending : {1}'.format(committed_txs, pending_txs))
+    db_nonce = get_db_nonce(conn, enfty_tx_table, OWNER_ACCOUNT)
     app.logger.info('nonce user : %s', db_nonce)
     nonce = (int(db_nonce) + 1) if not db_nonce is None else 1
-    if nonce < committed_transactions: nonce = committed_transactions
+    if nonce < committed_txs: nonce = committed_txs
     tx['nonce'] = nonce
     enfty_tx = enitiumcontract.functions.mintNFT(recipient_address, token_uri).buildTransaction(tx)
     signed_transaction = w3.eth.account.sign_transaction(enfty_tx, OWNER_PRIVATE_KEY)
@@ -104,7 +103,17 @@ def process_mint(tx_uuid, tx, recipient_address, token_uri, bol_id):
             error_code__c = str(ve.args[0]['code']),
             error_message__c = str(ve.args[0]['message'])
         ).where(
-           enfty_tx_table.c. gateway_id__c == str(tx_uuid)
+           enfty_tx_table.c.gateway_id__c == str(tx_uuid)
+        )
+        conn.execute(u)
+        conn.close()
+    except exceptions.TimeExhausted as te:
+        u = enfty_tx_table.update().values(
+            status__c = 'Failed',
+            error_code__c = "0",
+            error_message__c = str(te.args[0])
+        ).where(
+            enfty_tx_table.c.gateway_id__c == str(tx_uuid)
         )
         conn.execute(u)
         conn.close()
@@ -156,8 +165,17 @@ def process_transfer(tx_uuid, tx, from_address, from_pk, recipient_address, toke
     conn.execute(u)
     conn.close()
 
-
 def sanitize_dict(dict):
     sane_form = {}
     for key in dict: sane_form[key] = dict[key].strip()
     return sane_form
+
+def get_db_nonce(conn, tx_table, from_address):
+    db_nonce = conn.execute(
+        select(
+            [func.max(enfty_tx_table.c.nonce__c)]
+        ).where(
+            enfty_tx_table.c.from_address__c == OWNER_ACCOUNT
+        )
+    ).scalar()
+    return db_nonce
