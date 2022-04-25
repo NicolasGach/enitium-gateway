@@ -77,7 +77,7 @@ def process_mint(tx_uuid, tx, recipient_address, token_uri, bol_id):
             error_code__c = str(ve.args[0]['code']),
             error_message__c = str(ve.args[0]['message'])
         ).where(
-            gateway_id__c = str(tx_uuid)
+           enfty_tx_table.c. gateway_id__c == str(tx_uuid)
         )
         conn.exectue(u)
         conn.close()
