@@ -79,7 +79,7 @@ def process_mint(tx_uuid, tx, recipient_address, token_uri, bol_id):
         ).where(
            enfty_tx_table.c. gateway_id__c == str(tx_uuid)
         )
-        conn.exectue(u)
+        conn.execute(u)
         conn.close()
     app.logger.info('tx sent with hash : %s and nonce : %s', tx_hash.hex(), nonce)
     u = enfty_tx_table.update().values(
