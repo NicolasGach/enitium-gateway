@@ -147,12 +147,17 @@ def transfer():
     app.logger.info('Before get balance ...')
     if not w3.eth.get_balance(sane_form['from_address']) > 200000:
         raise LogicError({"code": "Request Error", "description": "The sender account has no funds for transfer"}, 400)
+    nonce = -1
+    if 'nonce' in sane_form:
+        app.logger.info('Nonce forced in transaction with value : {0}'.format(nonce))
+        nonce = sane_form['nonce']
     tx = {
         'from': sane_form['from_address'],
         'chainId': 3,
         'gas': 2000000,
-        'maxFeePerGas': w3.toWei('70', 'gwei'),
-        'maxPriorityFeePerGas': w3.toWei('2', 'gwei')
+        'maxFeePerGas': w3.toWei(MAX_FEE_PER_GAS, 'gwei'),
+        'maxPriorityFeePerGas': w3.toWei(MAX_PRIORITY_FEE_PER_GAS, 'gwei'),
+        'nonce': int(nonce)
     }
     tx_uuid = uuid.uuid4()
     ins = enfty_tx_table.insert().values(
