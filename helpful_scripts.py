@@ -68,6 +68,7 @@ def process_mint(tx_uuid, tx, recipient_address, token_uri, bol_id):
         db_highest_failed_nonce = get_db_highest_failed_nonce(conn, enfty_tx_table, OWNER_ACCOUNT)
         app.logger.info('nonce user : {0}, highest failed nonce user : {1}'.format(db_nonce, db_highest_failed_nonce))
         computed_nonce = (int(db_nonce) + 1) if not db_nonce is None else 1
+        tx['nonce'] = computed_nonce
         if computed_nonce < pending_txs: 
             tx['nonce'] = pending_txs + 1
         if db_highest_failed_nonce == pending_txs:
@@ -144,8 +145,9 @@ def process_transfer(tx_uuid, tx, from_address, from_pk, recipient_address, toke
     if tx['nonce'] == -1:
         db_nonce = get_db_nonce(conn, enfty_tx_table, OWNER_ACCOUNT)
         db_highest_failed_nonce = get_db_highest_failed_nonce(conn, enfty_tx_table, OWNER_ACCOUNT)
-        app.logger.info('nonce user : {0}, highest failed nonce user : {1}'.format(db_nonce, db_highest_failed_nonce))
+        app.logger.info('nonce user in db: {0}, highest failed nonce user : {1}'.format(db_nonce, db_highest_failed_nonce))
         computed_nonce = (int(db_nonce) + 1) if not db_nonce is None else 1
+        tx['nonce'] = computed_nonce
         if computed_nonce < pending_transactions: 
             tx['nonce'] = pending_transactions + 1
         if db_highest_failed_nonce == pending_transactions:
