@@ -166,6 +166,7 @@ def transfer():
         sent_from__c = sane_form['from_address'],
         from_address__c = sane_form['from_address'],
         to_address__c = sane_form['to_address'],
+        token_id__c = sane_form['token_id'],
         gateway_id__c =  tx_uuid,
         bill_of_lading__c = sane_form['bol_id'],
         status__c = 'Processing',
