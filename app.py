@@ -22,6 +22,7 @@ from sqlalchemy import create_engine, MetaData, Table
 from sqlalchemy import MetaData, Table, create_engine, and_, func
 from sqlalchemy.sql import select
 from sqlalchemy.orm import sessionmaker
+from datetime import datetime, timezone
 import uuid
 
 #contract : 0x855539e32608298cF253dC5bFb25043D19692f6a
@@ -124,6 +125,7 @@ def mint():
         gateway_id__c =  tx_uuid,
         bill_of_lading__c = sane_form['bol_id'],
         status__c = 'Processing',
+        last_status_change_date__c = datetime.now(timezone.utc),
         type__c = 'Minting')
     conn = sqlengine.connect()
     result = conn.execute(ins)
@@ -167,6 +169,7 @@ def transfer():
         gateway_id__c =  tx_uuid,
         bill_of_lading__c = sane_form['bol_id'],
         status__c = 'Processing',
+        last_status_change_date__c = datetime.now(timezone.utc),
         type__c = 'Transfer')
     conn = sqlengine.connect()
     result = conn.execute(ins)

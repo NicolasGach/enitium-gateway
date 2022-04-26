@@ -9,6 +9,7 @@ from web3 import Web3, exceptions
 from sqlalchemy import MetaData, Table, create_engine, and_, func
 from sqlalchemy.sql import select
 from sqlalchemy.orm import sessionmaker
+from datetime import datetime, timezone
 
 app = Flask(__name__)
 app.logger.setLevel(DEBUG)
@@ -82,6 +83,7 @@ def process_mint(tx_uuid, tx, recipient_address, token_uri, bol_id):
         app.logger.info('tx sent with hash : %s and nonce : %s', tx_hash.hex(), tx['nonce'])
         u = enfty_tx_table.update().values(
             status__c = 'Sent',
+            last_status_change_date__c = datetime.now(timezone.utc),
             tx_hash__c = tx_hash.hex(),
             nonce__c = tx['nonce']
         ).where(and_(
@@ -99,7 +101,8 @@ def process_mint(tx_uuid, tx, recipient_address, token_uri, bol_id):
             from_address__c = decoded_tx_receipt[0]['args']['from'], 
             to_address__c = decoded_tx_receipt[0]['args']['to'], 
             token_id__c = decoded_tx_receipt[0]['args']['tokenId'],
-            status__c = 'Cleared'
+            status__c = 'Cleared',
+            last_status_change_date__c = datetime.now(timezone.utc),
         ).where(and_(
             enfty_tx_table.c.tx_hash__c == tx_hash.hex(), 
             enfty_tx_table.c.bill_of_lading__c == bol_id)
@@ -110,6 +113,7 @@ def process_mint(tx_uuid, tx, recipient_address, token_uri, bol_id):
         app.logger.info('ValueError thrown with value : {0}'.format(ve))
         u = enfty_tx_table.update().values(
             status__c = 'Failed',
+            last_status_change_date__c = datetime.now(timezone.utc),
             error_code__c = str(ve.args[0]['code']),
             error_message__c = str(ve.args[0]['message'])
         ).where(
@@ -121,6 +125,7 @@ def process_mint(tx_uuid, tx, recipient_address, token_uri, bol_id):
         app.logger.info('TimeExhausted error thrown with value : {0}'.format(te))
         u = enfty_tx_table.update().values(
             status__c = 'Failed',
+            last_status_change_date__c = datetime.now(timezone.utc),
             error_code__c = "0",
             error_message__c = str(te.args[0])
         ).where(
@@ -141,9 +146,9 @@ def process_transfer(tx_uuid, tx, from_address, from_pk, recipient_address, toke
         db_highest_failed_nonce = get_db_highest_failed_nonce(conn, enfty_tx_table, OWNER_ACCOUNT)
         app.logger.info('nonce user : {0}, highest failed nonce user : {1}'.format(db_nonce, db_highest_failed_nonce))
         computed_nonce = (int(db_nonce) + 1) if not db_nonce is None else 1
-        if computed_nonce < pending_txs: 
-            tx['nonce'] = pending_txs + 1
-        if db_highest_failed_nonce == pending_txs:
+        if computed_nonce < pending_transactions: 
+            tx['nonce'] = pending_transactions + 1
+        if db_highest_failed_nonce == pending_transactions:
             tx['nonce'] = db_highest_failed_nonce
             tx['gas'] = tx['gas'] * FORCE_GAS_MULTIPLIER
     else:
@@ -159,6 +164,7 @@ def process_transfer(tx_uuid, tx, from_address, from_pk, recipient_address, toke
         app.logger.info('tx transfer sent with has : %s', tx_hash.hex())
         u = enfty_tx_table.update().values(
             status__c = 'Sent',
+            last_status_change_date__c = datetime.now(timezone.utc),
             tx_hash__c = tx_hash.hex(),
             nonce__c = tx['nonce']
         ).where(and_(
@@ -176,7 +182,8 @@ def process_transfer(tx_uuid, tx, from_address, from_pk, recipient_address, toke
             from_address__c = decoded_tx_receipt[0]['args']['from'],
             to_address__c = decoded_tx_receipt[0]['args']['to'],
             token_id__c = decoded_tx_receipt[0]['args']['tokenId'],
-            status__c = 'Cleared'
+            status__c = 'Cleared',
+            last_status_change_date__c = datetime.now(timezone.utc)
         ).where(and_(
             enfty_tx_table.c.tx_hash__c == tx_hash.hex(),
             enfty_tx_table.c.bill_of_lading__c == bol_id
@@ -187,6 +194,7 @@ def process_transfer(tx_uuid, tx, from_address, from_pk, recipient_address, toke
         app.logger.info('ValueError thrown with value : {0}'.format(ve))
         u = enfty_tx_table.update().values(
             status__c = 'Failed',
+            last_status_change_date__c = datetime.now(),
             error_code__c = str(ve.args[0]['code']),
             error_message__c = str(ve.args[0]['message'])
         ).where(
@@ -198,6 +206,7 @@ def process_transfer(tx_uuid, tx, from_address, from_pk, recipient_address, toke
         app.logger.info('TimeExhausted error thrown with value : {0}'.format(te))
         u = enfty_tx_table.update().values(
             status__c = 'Failed',
+            last_status_change_date__c = datetime.now(timezone.utc),
             error_code__c = "0",
             error_message__c = str(te.args[0])
         ).where(
