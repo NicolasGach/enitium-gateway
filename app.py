@@ -22,6 +22,7 @@ from sqlalchemy import create_engine, MetaData, Table
 from sqlalchemy import MetaData, Table, create_engine, and_, func
 from sqlalchemy.sql import select
 from sqlalchemy.orm import sessionmaker
+from datetime import datetime, timezone
 import uuid
 
 #contract : 0x855539e32608298cF253dC5bFb25043D19692f6a
@@ -39,6 +40,8 @@ OWNER_ACCOUNT = os.environ['OWNER_ACCOUNT']
 OWNER_PRIVATE_KEY = os.environ['OWNER_PRIVATE_KEY']
 IPFS_PROJECT_ID = os.environ['IPFS_PROJECT_ID']
 IPFS_PROJECT_SECRET = os.environ['IPFS_PROJECT_SECRET']
+MAX_FEE_PER_GAS = os.environ['MAX_FEE_PER_GAS_GWEI']
+MAX_PRIORITY_FEE_PER_GAS = os.environ['MAX_PRIORITY_FEE_PER_GAS_GWEI']
 q_high = Queue('high', connection = conn)
 q_low = Queue('low', connection = conn)
 DATABASE_URL=os.environ['DATABASE_URL']
@@ -103,20 +106,26 @@ def mint():
     )
     if not ipfs_response.status_code == 200:
         raise LogicError({"code": "Request Error", "description": "Token not found on IPFS host"}, 400)
-    #nonce = 0
+    nonce = -1
+    if 'nonce' in sane_form:
+        app.logger.info('Nonce forced in transaction with value : {0}'.format(nonce))
+        nonce = sane_form['nonce']
     tx = {
         'from': OWNER_ACCOUNT,
         'chainId': 3,
-        'gas': 2000000,
-        'maxFeePerGas': w3.toWei('70', 'gwei'),
-        'maxPriorityFeePerGas': w3.toWei('2', 'gwei')
+        #'gas': 2000000,
+        'maxFeePerGas': w3.toWei(MAX_FEE_PER_GAS, 'gwei'),
+        'maxPriorityFeePerGas': w3.toWei(MAX_PRIORITY_FEE_PER_GAS, 'gwei'),
+        'nonce': int(nonce)
     }
     tx_uuid = uuid.uuid4()
     ins = enfty_tx_table.insert().values(
+        sent_from__c = OWNER_ACCOUNT,
         to_address__c = OWNER_ACCOUNT,
         gateway_id__c =  tx_uuid,
         bill_of_lading__c = sane_form['bol_id'],
         status__c = 'Processing',
+        last_status_change_date__c = datetime.now(timezone.utc),
         type__c = 'Minting')
     conn = sqlengine.connect()
     result = conn.execute(ins)
@@ -140,20 +149,28 @@ def transfer():
     app.logger.info('Before get balance ...')
     if not w3.eth.get_balance(sane_form['from_address']) > 200000:
         raise LogicError({"code": "Request Error", "description": "The sender account has no funds for transfer"}, 400)
+    nonce = -1
+    if 'nonce' in sane_form:
+        app.logger.info('Nonce forced in transaction with value : {0}'.format(nonce))
+        nonce = sane_form['nonce']
     tx = {
         'from': sane_form['from_address'],
         'chainId': 3,
-        'gas': 2000000,
-        'maxFeePerGas': w3.toWei('70', 'gwei'),
-        'maxPriorityFeePerGas': w3.toWei('2', 'gwei')
+        #'gas': 2000000,
+        'maxFeePerGas': w3.toWei(MAX_FEE_PER_GAS, 'gwei'),
+        'maxPriorityFeePerGas': w3.toWei(MAX_PRIORITY_FEE_PER_GAS, 'gwei'),
+        'nonce': int(nonce)
     }
     tx_uuid = uuid.uuid4()
     ins = enfty_tx_table.insert().values(
+        sent_from__c = sane_form['from_address'],
         from_address__c = sane_form['from_address'],
         to_address__c = sane_form['to_address'],
+        token_id__c = sane_form['token_id'],
         gateway_id__c =  tx_uuid,
         bill_of_lading__c = sane_form['bol_id'],
         status__c = 'Processing',
+        last_status_change_date__c = datetime.now(timezone.utc),
         type__c = 'Transfer')
     conn = sqlengine.connect()
     result = conn.execute(ins)
