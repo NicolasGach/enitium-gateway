@@ -113,10 +113,10 @@ def mint():
     tx = {
         'from': OWNER_ACCOUNT,
         'chainId': 3,
-        'gas': 2000000,
+        #'gas': 2000000,
         'maxFeePerGas': w3.toWei(MAX_FEE_PER_GAS, 'gwei'),
-        'maxPriorityFeePerGas': w3.toWei(MAX_PRIORITY_FEE_PER_GAS, 'gwei'),
-        'nonce': int(nonce)
+        'maxPriorityFeePerGas': w3.toWei(MAX_PRIORITY_FEE_PER_GAS, 'gwei')
+        #'nonce': int(nonce)
     }
     tx_uuid = uuid.uuid4()
     ins = enfty_tx_table.insert().values(
