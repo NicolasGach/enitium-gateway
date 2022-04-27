@@ -65,7 +65,11 @@ def process_mint(tx_uuid, tx, recipient_address, token_uri, bol_id):
     pending_txs = w3.eth.get_transaction_count(OWNER_ACCOUNT, 'pending')
     app.logger.info('transaction count confirmed : {0}, transaction count with pending : {1}'.format(committed_txs, pending_txs))
     if tx['nonce'] == -1:
-        db_nonce = get_db_nonce(conn, enfty_tx_table, OWNER_ACCOUNT)
+        if(pending_txs > committed_txs):
+            tx['nonce'] = pending_txs
+        else:
+            tx['nonce'] = committed_txs
+        '''db_nonce = get_db_nonce(conn, enfty_tx_table, OWNER_ACCOUNT)
         db_highest_failed_nonce = get_db_highest_failed_nonce(conn, enfty_tx_table, OWNER_ACCOUNT)
         app.logger.info('nonce user : {0}, highest failed nonce user : {1}'.format(db_nonce, db_highest_failed_nonce))
         computed_nonce = (int(db_nonce) + 1) if not db_nonce is None else 1
@@ -73,7 +77,7 @@ def process_mint(tx_uuid, tx, recipient_address, token_uri, bol_id):
         if computed_nonce < pending_txs: 
             tx['nonce'] = pending_txs + 1
         if db_highest_failed_nonce == pending_txs:
-            tx['nonce'] = db_highest_failed_nonce
+            tx['nonce'] = db_highest_failed_nonce'''
             #tx['gas'] = tx['gas'] * FORCE_GAS_MULTIPLIER
         #if tx['gas'] > latest_block.gasLimit: tx['gas'] = latest_block.gasLimit
     #else:
