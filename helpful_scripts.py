@@ -65,7 +65,11 @@ def process_mint(tx_uuid, tx, recipient_address, token_uri, bol_id):
     pending_txs = w3.eth.get_transaction_count(OWNER_ACCOUNT, 'pending')
     app.logger.info('transaction count confirmed : {0}, transaction count with pending : {1}'.format(committed_txs, pending_txs))
     if tx['nonce'] == -1:
-        db_nonce = get_db_nonce(conn, enfty_tx_table, OWNER_ACCOUNT)
+        if(pending_txs > committed_txs):
+            tx['nonce'] = pending_txs
+        else:
+            tx['nonce'] = committed_txs
+        '''db_nonce = get_db_nonce(conn, enfty_tx_table, OWNER_ACCOUNT)
         db_highest_failed_nonce = get_db_highest_failed_nonce(conn, enfty_tx_table, OWNER_ACCOUNT)
         app.logger.info('nonce user : {0}, highest failed nonce user : {1}'.format(db_nonce, db_highest_failed_nonce))
         computed_nonce = (int(db_nonce) + 1) if not db_nonce is None else 1
@@ -73,16 +77,16 @@ def process_mint(tx_uuid, tx, recipient_address, token_uri, bol_id):
         if computed_nonce < pending_txs: 
             tx['nonce'] = pending_txs + 1
         if db_highest_failed_nonce == pending_txs:
-            tx['nonce'] = db_highest_failed_nonce
-            tx['gas'] = tx['gas'] * FORCE_GAS_MULTIPLIER
-        if tx['gas'] > latest_block.gasLimit: tx['gas'] = latest_block.gasLimit - 1
-    else:
-        tx['gas'] = tx['gas'] * FORCE_GAS_MULTIPLIER
-        if tx['gas'] > latest_block.gasLimit: tx['gas'] = latest_block.gasLimit - 1
+            tx['nonce'] = db_highest_failed_nonce'''
+            #tx['gas'] = tx['gas'] * FORCE_GAS_MULTIPLIER
+        #if tx['gas'] > latest_block.gasLimit: tx['gas'] = latest_block.gasLimit
+    #else:
+        #tx['gas'] = tx['gas'] * FORCE_GAS_MULTIPLIER
+        #if tx['gas'] > latest_block.gasLimit: tx['gas'] = latest_block.gasLimit
     enfty_tx = enitiumcontract.functions.mintNFT(recipient_address, token_uri).buildTransaction(tx)
     signed_transaction = w3.eth.account.sign_transaction(enfty_tx, OWNER_PRIVATE_KEY)
     try:
-        app.logger.info('about to send transaction with gas : {0}'.format(tx['gas']))
+        #app.logger.info('about to send transaction with gas : {0}'.format(tx['gas']))
         tx_hash = w3.eth.send_raw_transaction(signed_transaction.rawTransaction)
         app.logger.info('tx sent with hash : %s and nonce : %s', tx_hash.hex(), tx['nonce'])
         u = enfty_tx_table.update().values(
@@ -147,7 +151,11 @@ def process_transfer(tx_uuid, tx, from_address, from_pk, recipient_address, toke
     pending_transactions = w3.eth.get_transaction_count(from_address, 'pending')
     app.logger.info('transaction count confirmed : {0}, transaction count with pending : {1}'.format(committed_transactions, pending_transactions))
     if tx['nonce'] == -1:
-        db_nonce = get_db_nonce(conn, enfty_tx_table, OWNER_ACCOUNT)
+        if(pending_transactions > committed_transactions):
+            tx['nonce'] = pending_transactions
+        else:
+            tx['nonce'] = committed_transactions
+        '''db_nonce = get_db_nonce(conn, enfty_tx_table, OWNER_ACCOUNT)
         db_highest_failed_nonce = get_db_highest_failed_nonce(conn, enfty_tx_table, OWNER_ACCOUNT)
         app.logger.info('nonce user in db: {0}, highest failed nonce user : {1}'.format(db_nonce, db_highest_failed_nonce))
         computed_nonce = (int(db_nonce) + 1) if not db_nonce is None else 1
@@ -157,10 +165,10 @@ def process_transfer(tx_uuid, tx, from_address, from_pk, recipient_address, toke
         if db_highest_failed_nonce == pending_transactions:
             tx['nonce'] = db_highest_failed_nonce
             tx['gas'] = tx['gas'] * FORCE_GAS_MULTIPLIER
-            if tx['gas'] > latest_block.gasLimit: tx['gas'] = latest_block.gasLimit - 1
+            if tx['gas'] > latest_block.gasLimit: tx['gas'] = latest_block.gasLimit
     else:
         tx['gas'] = tx['gas'] * FORCE_GAS_MULTIPLIER
-        if tx['gas'] > latest_block.gasLimit: tx['gas'] = latest_block.gasLimit - 1
+        if tx['gas'] > latest_block.gasLimit: tx['gas'] = latest_block.gasLimit'''
     enfty_tx = enitiumcontract.functions.transferFrom(
         from_address,
         recipient_address,
@@ -233,7 +241,10 @@ def get_db_nonce(conn, tx_table, from_address):
         select(
             [func.max(tx_table.c.nonce__c)]
         ).where(
-            tx_table.c.sent_from__c == from_address
+            and_(
+                tx_table.c.sent_from__c == from_address,
+                tx_table.c.status__c == 'Cleared'
+            )
         )
     ).scalar()
     return db_nonce
