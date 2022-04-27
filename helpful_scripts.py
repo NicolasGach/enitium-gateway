@@ -75,10 +75,10 @@ def process_mint(tx_uuid, tx, recipient_address, token_uri, bol_id):
         if db_highest_failed_nonce == pending_txs:
             tx['nonce'] = db_highest_failed_nonce
             tx['gas'] = tx['gas'] * FORCE_GAS_MULTIPLIER
-        if tx['gas'] > latest_block.gasLimit: tx['gas'] = latest_block.gasLimit - 1
+        if tx['gas'] > latest_block.gasLimit: tx['gas'] = latest_block.gasLimit
     else:
         tx['gas'] = tx['gas'] * FORCE_GAS_MULTIPLIER
-        if tx['gas'] > latest_block.gasLimit: tx['gas'] = latest_block.gasLimit - 1
+        if tx['gas'] > latest_block.gasLimit: tx['gas'] = latest_block.gasLimit
     enfty_tx = enitiumcontract.functions.mintNFT(recipient_address, token_uri).buildTransaction(tx)
     signed_transaction = w3.eth.account.sign_transaction(enfty_tx, OWNER_PRIVATE_KEY)
     try:
@@ -157,10 +157,10 @@ def process_transfer(tx_uuid, tx, from_address, from_pk, recipient_address, toke
         if db_highest_failed_nonce == pending_transactions:
             tx['nonce'] = db_highest_failed_nonce
             tx['gas'] = tx['gas'] * FORCE_GAS_MULTIPLIER
-            if tx['gas'] > latest_block.gasLimit: tx['gas'] = latest_block.gasLimit - 1
+            if tx['gas'] > latest_block.gasLimit: tx['gas'] = latest_block.gasLimit
     else:
         tx['gas'] = tx['gas'] * FORCE_GAS_MULTIPLIER
-        if tx['gas'] > latest_block.gasLimit: tx['gas'] = latest_block.gasLimit - 1
+        if tx['gas'] > latest_block.gasLimit: tx['gas'] = latest_block.gasLimit
     enfty_tx = enitiumcontract.functions.transferFrom(
         from_address,
         recipient_address,
@@ -233,7 +233,10 @@ def get_db_nonce(conn, tx_table, from_address):
         select(
             [func.max(tx_table.c.nonce__c)]
         ).where(
-            tx_table.c.sent_from__c == from_address
+            and_(
+                tx_table.c.sent_from__c == from_address,
+                tx_table.c.status__c == 'Cleared'
+            )
         )
     ).scalar()
     return db_nonce
