@@ -82,7 +82,7 @@ def process_mint(tx_uuid, tx, recipient_address, token_uri, bol_id):
     enfty_tx = enitiumcontract.functions.mintNFT(recipient_address, token_uri).buildTransaction(tx)
     signed_transaction = w3.eth.account.sign_transaction(enfty_tx, OWNER_PRIVATE_KEY)
     try:
-        app.logger.info('about to send transaction with gas : {0}'.format(tx['gas']))
+        #app.logger.info('about to send transaction with gas : {0}'.format(tx['gas']))
         tx_hash = w3.eth.send_raw_transaction(signed_transaction.rawTransaction)
         app.logger.info('tx sent with hash : %s and nonce : %s', tx_hash.hex(), tx['nonce'])
         u = enfty_tx_table.update().values(
