@@ -60,6 +60,7 @@ global process_mint
 def process_mint(tx_uuid, tx, recipient_address, token_uri, bol_id):
     conn = sqlengine.connect()
     enitiumcontract = w3.eth.contract(address=CONTRACT_ADDRESS, abi=CONTRACT_ABI)
+    latest_block = w3.eth.get_block('latest')
     committed_txs = w3.eth.get_transaction_count(OWNER_ACCOUNT)
     pending_txs = w3.eth.get_transaction_count(OWNER_ACCOUNT, 'pending')
     app.logger.info('transaction count confirmed : {0}, transaction count with pending : {1}'.format(committed_txs, pending_txs))
@@ -74,8 +75,10 @@ def process_mint(tx_uuid, tx, recipient_address, token_uri, bol_id):
         if db_highest_failed_nonce == pending_txs:
             tx['nonce'] = db_highest_failed_nonce
             tx['gas'] = tx['gas'] * FORCE_GAS_MULTIPLIER
+        if tx['gas'] > latest_block.gas_limit: tx['gas'] = latest_block.gas_limit - 1
     else:
         tx['gas'] = tx['gas'] * FORCE_GAS_MULTIPLIER
+        if tx['gas'] > latest_block.gas_limit: tx['gas'] = latest_block.gas_limit - 1
     enfty_tx = enitiumcontract.functions.mintNFT(recipient_address, token_uri).buildTransaction(tx)
     signed_transaction = w3.eth.account.sign_transaction(enfty_tx, OWNER_PRIVATE_KEY)
     try:
