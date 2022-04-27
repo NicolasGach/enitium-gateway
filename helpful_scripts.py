@@ -151,7 +151,11 @@ def process_transfer(tx_uuid, tx, from_address, from_pk, recipient_address, toke
     pending_transactions = w3.eth.get_transaction_count(from_address, 'pending')
     app.logger.info('transaction count confirmed : {0}, transaction count with pending : {1}'.format(committed_transactions, pending_transactions))
     if tx['nonce'] == -1:
-        db_nonce = get_db_nonce(conn, enfty_tx_table, OWNER_ACCOUNT)
+        if(pending_transactions > committed_transactions):
+            tx['nonce'] = pending_transactions
+        else:
+            tx['nonce'] = committed_transactions
+        '''db_nonce = get_db_nonce(conn, enfty_tx_table, OWNER_ACCOUNT)
         db_highest_failed_nonce = get_db_highest_failed_nonce(conn, enfty_tx_table, OWNER_ACCOUNT)
         app.logger.info('nonce user in db: {0}, highest failed nonce user : {1}'.format(db_nonce, db_highest_failed_nonce))
         computed_nonce = (int(db_nonce) + 1) if not db_nonce is None else 1
@@ -164,7 +168,7 @@ def process_transfer(tx_uuid, tx, from_address, from_pk, recipient_address, toke
             if tx['gas'] > latest_block.gasLimit: tx['gas'] = latest_block.gasLimit
     else:
         tx['gas'] = tx['gas'] * FORCE_GAS_MULTIPLIER
-        if tx['gas'] > latest_block.gasLimit: tx['gas'] = latest_block.gasLimit
+        if tx['gas'] > latest_block.gasLimit: tx['gas'] = latest_block.gasLimit'''
     enfty_tx = enitiumcontract.functions.transferFrom(
         from_address,
         recipient_address,
