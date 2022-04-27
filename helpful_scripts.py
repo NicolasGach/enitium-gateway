@@ -64,7 +64,7 @@ def process_mint(tx_uuid, tx, recipient_address, token_uri, bol_id):
     committed_txs = w3.eth.get_transaction_count(OWNER_ACCOUNT)
     pending_txs = w3.eth.get_transaction_count(OWNER_ACCOUNT, 'pending')
     app.logger.info('transaction count confirmed : {0}, transaction count with pending : {1}'.format(committed_txs, pending_txs))
-    ''''if tx['nonce'] == -1:
+    if tx['nonce'] == -1:
         db_nonce = get_db_nonce(conn, enfty_tx_table, OWNER_ACCOUNT)
         db_highest_failed_nonce = get_db_highest_failed_nonce(conn, enfty_tx_table, OWNER_ACCOUNT)
         app.logger.info('nonce user : {0}, highest failed nonce user : {1}'.format(db_nonce, db_highest_failed_nonce))
@@ -74,11 +74,11 @@ def process_mint(tx_uuid, tx, recipient_address, token_uri, bol_id):
             tx['nonce'] = pending_txs + 1
         if db_highest_failed_nonce == pending_txs:
             tx['nonce'] = db_highest_failed_nonce
-            tx['gas'] = tx['gas'] * FORCE_GAS_MULTIPLIER
-        if tx['gas'] > latest_block.gasLimit: tx['gas'] = latest_block.gasLimit
-    else:
-        tx['gas'] = tx['gas'] * FORCE_GAS_MULTIPLIER
-        if tx['gas'] > latest_block.gasLimit: tx['gas'] = latest_block.gasLimit'''
+            #tx['gas'] = tx['gas'] * FORCE_GAS_MULTIPLIER
+        #if tx['gas'] > latest_block.gasLimit: tx['gas'] = latest_block.gasLimit
+    #else:
+        #tx['gas'] = tx['gas'] * FORCE_GAS_MULTIPLIER
+        #if tx['gas'] > latest_block.gasLimit: tx['gas'] = latest_block.gasLimit
     enfty_tx = enitiumcontract.functions.mintNFT(recipient_address, token_uri).buildTransaction(tx)
     signed_transaction = w3.eth.account.sign_transaction(enfty_tx, OWNER_PRIVATE_KEY)
     try:
@@ -88,8 +88,8 @@ def process_mint(tx_uuid, tx, recipient_address, token_uri, bol_id):
         u = enfty_tx_table.update().values(
             status__c = 'Sent',
             last_status_change_date__c = datetime.now(timezone.utc),
-            tx_hash__c = tx_hash.hex()
-            #nonce__c = tx['nonce']
+            tx_hash__c = tx_hash.hex(),
+            nonce__c = tx['nonce']
         ).where(and_(
             enfty_tx_table.c.gateway_id__c == str(tx_uuid), 
             enfty_tx_table.c.bill_of_lading__c == bol_id)
