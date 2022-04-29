@@ -51,6 +51,31 @@ metadata_obj.reflect(bind=sqlengine)
 app.logger.info('table keys : %s', metadata_obj.tables.keys())
 enfty_tx_table = metadata_obj.tables['salesforce.enfty_bol_transfer_data__c']
 
+"""Main module for the Enitium Gateway app
+
+:raises LogicError: _description_
+:raises AuthError: _description_
+:raises AuthError: _description_
+:raises LogicError: _description_
+:raises LogicError: _description_
+:raises LogicError: _description_
+:raises LogicError: _description_
+:raises AuthError: _description_
+:raises LogicError: _description_
+:raises LogicError: _description_
+:raises LogicError: _description_
+:raises AuthError: _description_
+:raises LogicError: _description_
+:raises LogicError: _description_
+:raises LogicError: _description_
+:raises LogicError: _description_
+:raises AuthError: _description_
+:raises LogicError: _description_
+:raises LogicError: _description_
+:return: _description_
+:rtype: _type_
+"""
+
 @app.route('/')
 def index():
     response = {}
