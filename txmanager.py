@@ -66,6 +66,7 @@ class TxDbManager(object):
                     nonce__c = tx['nonce']
                 )
             )
+            session.commit()
     
     def update_tx_with_receipt(self, tx_uuid, tx_receipt):
         with self.sessionmaker() as session:
@@ -79,6 +80,7 @@ class TxDbManager(object):
                     last_status_change_date__c = datetime.now(timezone.utc),
                 )
             )
+            session.commit()
 
     def update_tx_as_failed(self, tx_uuid, code, message):
         with self.sessionmaker() as session:
