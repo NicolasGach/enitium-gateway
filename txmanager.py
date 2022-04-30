@@ -94,3 +94,4 @@ class TxDbManager(object):
                     error_message__c = message
                 )
             )
+            session.commit()
