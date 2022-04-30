@@ -6,7 +6,7 @@ from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql import select
 
-logging.basicConfig(handlers=[logging.StreamHandler])
+logging.basicConfig(format = '%(asctime)s %(message)s', handlers=[logging.StreamHandler()])
 log = logging.getLogger('TxDbManager')
 
 class TxDbManager(object):
@@ -27,7 +27,7 @@ class TxDbManager(object):
             Base.prepare()
             cls.__txs = Base.classes.enfty_bol_transfer_data__c
             #cls.__txs = metadata_obj.tables['salesforce.enfty_bol_transfer_data__c']
-            log.debug('table keys : %s', metadata_obj.tables.keys())
+            log.debug('table keys : {0}'.format(metadata_obj.tables.keys()))
             cls.__singleton = cls(cls.__create_key, cls.__engine)
         return cls.__singleton
 
