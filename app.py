@@ -160,7 +160,7 @@ def mint():
         bill_of_lading_id=sane_form['bol_id'],
         tx_type='Minting')
     #q_high.enqueue(process_mint, args=(tx_uuid, tx, sane_form['recipient_address'], ipfs_response.text, sane_form['bol_id']))
-    return { 'tx_uuid': tx_db.uuid, 'job_enqueued' : 'ok', 'postgre_id': tx_db.id}
+    return { 'tx_uuid': tx_db['uuid'], 'job_enqueued' : 'ok', 'postgre_id': tx_db['id']}
 
 @app.route('/transfer', methods=['POST'])
 @requires_auth
