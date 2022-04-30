@@ -97,7 +97,7 @@ def process_transfer(tx_uuid, from_address, from_pk, recipient_address, token_id
         if nonce != -1 and nonce >= 0:
             tx_result = contract.transfer(from_address, from_pk, recipient_address, int(token_id), nonce)
         else:
-            tx_result = contract.transfer(from_address, recipient_address, int(token_id))
+            tx_result = contract.transfer(from_address, from_pk, recipient_address, int(token_id))
         log.debug('tx sent with hash : %s and nonce : %s', tx_result['tx_hash'].hex(), tx_result['tx']['nonce'])
         tx_db_manager.update_tx_as_sent(tx_uuid, tx_result['tx_hash'], tx_result['tx'])
         log.debug('Waiting for receipt')
