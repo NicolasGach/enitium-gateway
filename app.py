@@ -153,7 +153,7 @@ def mint():
         'maxPriorityFeePerGas': w3.toWei(MAX_PRIORITY_FEE_PER_GAS, 'gwei'),
         'nonce': int(nonce)
     }
-    tx_db_manager = TxDbManager.get_tx_db_manager()
+    tx_db_manager = TxDbManager.get_tx_db_manager(DATABASE_URL, 'gatewayengine')
     tx_db = tx_db_manager.create_tx_in_db(
         sent_from=OWNER_ACCOUNT, 
         to_address=OWNER_ACCOUNT,
