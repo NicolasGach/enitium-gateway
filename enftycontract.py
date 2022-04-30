@@ -26,6 +26,7 @@ class EnftyContract(object):
     __contract = None
     __create_key = object()
 
+    @classmethod
     def get_enfty_contract(cls):
         if cls.__singleton == None:
             cls.__singleton = EnftyContract()
