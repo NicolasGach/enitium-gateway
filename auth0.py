@@ -7,9 +7,9 @@ from exceptions import AuthError
 from jose import jwt
 
 app = Flask(__name__)
-AUTH0_DOMAIN = os.environ['AUTH0_DOMAIN']
-API_AUDIENCE = os.environ['API_AUDIENCE']
-ALGORITHMS = os.environ['ALGORITHMS'].split(" ")
+AUTH0_DOMAIN = os.environ.get('AUTH0_DOMAIN', '')
+API_AUDIENCE = os.environ.get('API_AUDIENCE', '')
+ALGORITHMS = os.environ.get('ALGORITHMS', '').split(" ")
 
 def get_token_auth_header():
     auth = request.headers.get("Authorization", None)

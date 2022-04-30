@@ -10,24 +10,41 @@ from sqlalchemy import MetaData, Table, create_engine, and_, func
 from sqlalchemy.sql import select
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime, timezone
+from exceptions import LogicError
 
 app = Flask(__name__)
 app.logger.setLevel(DEBUG)
-w3 = Web3(Web3.HTTPProvider(os.environ['INFURA_NODE_URL']))
-CONTRACT_ADDRESS = os.environ['CONTRACT_ADDRESS']
-with open('EnitiumNFT.json', 'r') as f:
-    json_contract = json.load(f)
-CONTRACT_ABI = json_contract["abi"]
-DATABASE_URL=os.environ['DATABASE_URL']
-OWNER_ACCOUNT = os.environ['OWNER_ACCOUNT']
-OWNER_PRIVATE_KEY = os.environ['OWNER_PRIVATE_KEY']
-FORCE_GAS_MULTIPLIER = int(os.environ['FORCE_GAS_MULTIPLIER'])
-sqlengine = create_engine(DATABASE_URL.replace('postgres://', 'postgresql://', 1), logging_name='gatewayengine')
-Session = sessionmaker(sqlengine)
-metadata_obj = MetaData(schema='salesforce')
-metadata_obj.reflect(bind=sqlengine)
-app.logger.info('table keys : %s', metadata_obj.tables.keys())
-enfty_tx_table = metadata_obj.tables['salesforce.enfty_bol_transfer_data__c']
+
+CONTRACT_ADDRESS = os.environ.get('CONTRACT_ADDRESS', '')
+DATABASE_URL = os.environ.get('DATABASE_URL', 'postgres://urifrxjjebgkrj:e007f6cad0a82178bd8cc058e25ea4e318c36f93a7401ebb83506061773c2054@ec2-52-215-22-82.eu-west-1.compute.amazonaws.com:5432/d921f851m84mkn')
+FORCE_GAS_MULTIPLIER = int(os.environ.get('FORCE_GAS_MULTIPLIER', '0'))
+INFURA_NODE_URL = os.environ.get('INFURA_NODE_URL', '')
+OWNER_ACCOUNT = os.environ.get('OWNER_ACCOUNT', '')
+OWNER_PRIVATE_KEY = os.environ.get('OWNER_PRIVATE_KEY', '')
+
+w3 = Web3(Web3.HTTPProvider(INFURA_NODE_URL))
+try:
+    if os.path.isfile('EnitiumNFT.json'):
+        with open('EnitiumNFT.json', 'r') as f:
+            json_contract = json.load(f)
+            CONTRACT_ABI = json_contract["abi"]
+    else:
+        json_contract = {'abi': ''}
+        raise LogicError({"code": "server error", "message": "contract abi not found"}, 500)
+except LogicError as le:
+    pass
+try:
+    sqlengine = create_engine(DATABASE_URL.replace('postgres://', 'postgresql://', 1), logging_name='gatewayengine')
+    Session = sessionmaker(sqlengine)
+    metadata_obj = MetaData(schema='salesforce')
+    metadata_obj.reflect(bind=sqlengine)
+    app.logger.info('table keys : %s', metadata_obj.tables.keys())
+    enfty_tx_table = metadata_obj.tables['salesforce.enfty_bol_transfer_data__c']
+except (TypeError, NameError):
+    Session = sessionmaker()
+    metadata_obj = MetaData()
+    enfty_tx_table = metadata_obj.tables['salesforce.enfty_bol_transfer_data__c']
+    pass
 
 def decrypt_sf_aes(content, key, vector):
     app.logger.info('vector : %s | content : %s', vector, content)
