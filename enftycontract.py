@@ -73,9 +73,9 @@ class EnftyContract(object):
             tx_hash = EnftyContract.__w3.eth.send_raw_transaction(signed_transaction.rawTransaction)
             return {'tx_hash':tx_hash, 'tx':tx}
         except ValueError as ve:
-            raise ValueError(ve)
+            raise ValueError(ve.args[0].message) from ve
         except exceptions.TimeExhausted as te:
-            raise exceptions.TimeExhausted(te)
+            raise exceptions.TimeExhausted(te.args[0])
 
     def transfer(self, tx):
         pass
