@@ -172,7 +172,7 @@ def transfer():
         sent_from=sane_form['from_address'], 
         to_address=sane_form['to_address'],
         bill_of_lading_id=sane_form['bol_id'],
-        tx_type='Tranfer',
+        tx_type='Transfer',
         from_address=sane_form['from_address'],
         token_id=sane_form['token_id'])
     nonce = -1
