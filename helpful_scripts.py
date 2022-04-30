@@ -74,7 +74,7 @@ def process_mint(tx_uuid, recipient_address, token_uri, nonce=-1):
             tx_result = contract.mint(recipient_address, token_uri, nonce)
         else :
             tx_result = contract.mint(recipient_address, token_uri)
-        log.debug('tx sent with hash : %s and nonce : %s', tx_result['tx_hash'].hex(), tx_result['nonce'])
+        log.debug('tx sent with hash : %s and nonce : %s', tx_result['tx_hash'].hex(), tx_result['tx']['nonce'])
         tx_db_manager.update_tx_as_sent(tx_uuid, tx_result['tx_hash'], tx_result['tx'])
         log.debug('Waiting for receipt')
         tx_receipt = contract.wait_for_tx_receipt(tx_result['tx_hash'])
