@@ -18,7 +18,7 @@ from rq import Queue
 from sqlalchemy import create_engine, MetaData, Table, and_, func
 from sqlalchemy.sql import select
 from sqlalchemy.orm import sessionmaker
-from txmanager import TxManager
+from txmanager import TxDbManager
 from web3 import Web3, exceptions
 from web3.gas_strategies.time_based import medium_gas_price_strategy
 from worker import conn
