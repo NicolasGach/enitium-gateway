@@ -43,7 +43,7 @@ class EnftyContract(object):
         pass
 
     def __build_tx(self, from_address, provided_nonce=-1):
-        if provided_nonce != -1 and provided_nonce >= 0:
+        if provided_nonce == -1:
             committed_txs = EnftyContract.__w3.eth.get_transaction_count(from_address)
             pending_txs = EnftyContract.__w3.eth.get_transaction_count(from_address, 'pending')
             log.debug('transaction count confirmed : {0}, transaction count with pending : {1}'.format(committed_txs, pending_txs))
@@ -51,8 +51,10 @@ class EnftyContract(object):
                 nonce = pending_txs
             else:
                 nonce = committed_txs
-        else:
+        elif provided_nonce != -1 and provided_nonce >= 0:
             nonce = provided_nonce
+        else:
+            raise ValueError('Provided nonce can\'t have a strictly negative value')
         return {
             'from': from_address,
             'chainId': 3,
@@ -81,7 +83,7 @@ class EnftyContract(object):
             if isinstance(te.args[0], str):
                 raise exceptions.TimeExhausted(te.args[0])
             else:
-                raise exceptions.TimeExhausted(te.args[0])
+                raise exceptions.TimeExhausted()
 
     def transfer(self, tx):
         pass

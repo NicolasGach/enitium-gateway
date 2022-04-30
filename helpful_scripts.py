@@ -81,7 +81,10 @@ def process_mint(tx_uuid, recipient_address, token_uri, nonce=-1):
         tx_db_manager.update_tx_with_receipt(tx_uuid, tx_receipt)
     except ValueError as ve:
         log.error('ValueError thrown with value : {0}'.format(ve))
-        tx_db_manager.update_tx_as_failed(tx_uuid, str(ve.args[0]['code']), str(ve.args[0]['message']))
+        if not isinstance(ve.args[0], str):
+            tx_db_manager.update_tx_as_failed(tx_uuid, str(ve.args[0]['code']), str(ve.args[0]['message']))
+        else:
+            tx_db_manager.update_tx_as_failed(tx_uuid, "0", str(ve.args[0]))
     except exceptions.TimeExhausted as te:
         log.error('TimeExhausted error thrown with value : {0}'.format(te))
         tx_db_manager.update_tx_as_failed(tx_uuid, "0", str(te.args[0]))
