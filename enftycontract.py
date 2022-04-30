@@ -42,12 +42,28 @@ class EnftyContract(object):
         assert(create_key == EnftyContract.__create_key), "Can't craete enftycontract directly, use static getter"
         pass
 
-    def mint(self, recipient_address, token_uri, nonce):
-        tx = self.__build_tx(OWNER_ACCOUNT, nonce)
-        return self.__mint(recipient_address, token_uri, tx)
+    def __build_tx(self, from_address, provided_nonce=-1):
+        if provided_nonce != -1 and provided_nonce >= 0:
+            committed_txs = EnftyContract.__w3.eth.get_transaction_count(from_address)
+            pending_txs = EnftyContract.__w3.eth.get_transaction_count(from_address, 'pending')
+            log.debug('transaction count confirmed : {0}, transaction count with pending : {1}'.format(committed_txs, pending_txs))
+            if(pending_txs > committed_txs):
+                nonce = pending_txs
+            else:
+                nonce = committed_txs
+        else:
+            nonce = provided_nonce
+        return {
+            'from': from_address,
+            'chainId': 3,
+            #'gas': 2000000,
+            'maxFeePerGas': EnftyContract.__w3.toWei(MAX_FEE_PER_GAS, 'gwei'),
+            'maxPriorityFeePerGas': EnftyContract.__w3.toWei(MAX_PRIORITY_FEE_PER_GAS, 'gwei'),
+            'nonce': int(nonce)
+        }
 
-    def mint(self, recipient_address, token_uri):
-        tx = self.__build_tx(OWNER_ACCOUNT)
+    def mint(self, recipient_address, token_uri, nonce=-1):
+        tx = self.__build_tx(OWNER_ACCOUNT, nonce)
         return self.__mint(recipient_address, token_uri, tx)
 
     def __mint(self, recipient_address, token_uri, tx):
@@ -74,33 +90,6 @@ class EnftyContract(object):
         except exceptions.ContractLogicError as e:
             log.debug('exception : {0}'.format(e))
             raise LogicError({"code": "Blockchain Error", "description": "Smart contract returned exception: {0}".format(e)}, 500)
-
-    def __build_tx(self, from_address):
-        committed_txs = EnftyContract.__w3.eth.get_transaction_count(from_address)
-        pending_txs = EnftyContract.__w3.eth.get_transaction_count(from_address, 'pending')
-        log.debug('transaction count confirmed : {0}, transaction count with pending : {1}'.format(committed_txs, pending_txs))
-        if(pending_txs > committed_txs):
-            nonce = pending_txs
-        else:
-            nonce = committed_txs
-        return {
-            'from': from_address,
-            'chainId': 3,
-            #'gas': 2000000,
-            'maxFeePerGas': EnftyContract.__w3.toWei(MAX_FEE_PER_GAS, 'gwei'),
-            'maxPriorityFeePerGas': EnftyContract.__w3.toWei(MAX_PRIORITY_FEE_PER_GAS, 'gwei'),
-            'nonce': int(nonce)
-        }
-
-    def __build_tx(self, from_address, nonce):
-        return {
-            'from': from_address,
-            'chainId': 3,
-            #'gas': 2000000,
-            'maxFeePerGas': EnftyContract.__w3.toWei(MAX_FEE_PER_GAS, 'gwei'),
-            'maxPriorityFeePerGas': EnftyContract.__w3.toWei(MAX_PRIORITY_FEE_PER_GAS, 'gwei'),
-            'nonce': int(nonce)
-        }
 
     def wait_for_tx_receipt(self, tx_hash):
         try:
