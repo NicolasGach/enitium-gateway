@@ -32,7 +32,7 @@ class TxDbManager(object):
         assert(create_key == TxDbManager.__create_key), "TxDbManager instances must be obtained via gt_TxDbManager()"
         self.sessionmaker = sessionmaker(engine)
 
-    def create_tx_in_db(self, sent_from, from_address, to_address, token_id, tx_type, bill_of_lading_id):
+    def create_tx_in_db(self, bill_of_lading_id, sent_from, to_address, tx_type, from_address='', token_id=''):
         with self.sessionmaker() as session:
             tx_uuid = uuid.uuid4()
             tx = TxDbManager.__txs(
