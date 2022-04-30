@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import create_engine, MetaData, Table, and_, func
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.sql import select
+from sqlalchemy.sql import select, update
 
 logging.basicConfig(format = '%(asctime)s %(message)s', handlers=[logging.StreamHandler()])
 log = logging.getLogger('TxDbManager')
@@ -55,6 +55,40 @@ class TxDbManager(object):
             session.commit()
             log.debug('About to return values : {0}, {1}'.format(tx.gateway_id__c, tx.id))
             return {'uuid': tx.gateway_id__c, 'id': tx.id}
+    
+    def update_tx_as_sent(self, tx_uuid, tx_hash, tx):
+        with self.sessionmaker() as session:
+            session.execute(
+                update(TxDbManager.__txs).where(TxDbManager.__txs.gateway_id__c == tx_uuid).values(
+                    status__c = 'Sent',
+                    last_status_change_date__c = datetime.now(timezone.utc),
+                    tx_hash__c = tx_hash.hex(),
+                    nonce__c = tx['nonce']
+                )
+            )
+    
+    def update_tx_with_receipt(self, tx_uuid, tx_receipt):
+        with self.sessionmaker() as session:
+            session.execute(    
+                update(TxDbManager.__txs).where(TxDbManager.__txs.gateway_id__c == tx_uuid).values(
+                    tx_hash__c = tx_receipt[0]['transactionHash'].hex(),
+                    from_address__c = tx_receipt[0]['args']['from'], 
+                    to_address__c = tx_receipt[0]['args']['to'], 
+                    token_id__c = tx_receipt[0]['args']['tokenId'],
+                    status__c = 'Cleared',
+                    last_status_change_date__c = datetime.now(timezone.utc),
+                )
+            )
 
-    def log_tx(self):
-        pass
+    def update_tx_as_failed(self, tx_uuid, code, message):
+        with self.sessionmaker() as session:
+            session.execute(
+                update(TxDbManager.__txs).where(
+                    TxDbManager.__txs.gateway_id__c == str(tx_uuid)
+                ).values(
+                    status__c = 'Failed',
+                    last_status_change_date__c = datetime.now(timezone.utc),
+                    error_code__c = code,
+                    error_message__c = message
+                )
+            )

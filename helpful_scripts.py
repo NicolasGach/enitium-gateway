@@ -1,19 +1,26 @@
+import base64
+import json
+import logging
+import os
+from txmanager import TxDbManager
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import unpad
-import base64
-import os
-import json
+from datetime import datetime, timezone
+from enftycontract import EnftyContract
+from exceptions import LogicError
 from flask import Flask, jsonify
 from logging import DEBUG
-from web3 import Web3, exceptions
 from sqlalchemy import MetaData, Table, create_engine, and_, func
 from sqlalchemy.sql import select
 from sqlalchemy.orm import sessionmaker
-from datetime import datetime, timezone
-from exceptions import LogicError
+from web3 import Web3, exceptions
 
 app = Flask(__name__)
 app.logger.setLevel(DEBUG)
+logging.basicConfig(format = '%(asctime)s %(message)s', handlers=[logging.StreamHandler()])
+log = logging.getLogger('EnftyContract')
+PYTHON_LOG_LEVEL = os.environ.get('PYTHON_LOG_LEVEL', 'INFO')
+log.setLevel(logging.DEBUG)
 
 CONTRACT_ADDRESS = os.environ.get('CONTRACT_ADDRESS', '')
 DATABASE_URL = os.environ.get('DATABASE_URL', 'postgres://urifrxjjebgkrj:e007f6cad0a82178bd8cc058e25ea4e318c36f93a7401ebb83506061773c2054@ec2-52-215-22-82.eu-west-1.compute.amazonaws.com:5432/d921f851m84mkn')
@@ -58,106 +65,26 @@ def decrypt_sf_aes(content, key, vector):
     result_text = result.decode('utf-8')
     return result_text.strip()
 
-def sign_and_send_w3_transaction_transfer_type(w3, contract, builtTransaction, signer):
-    signed_transaction = w3.eth.account.sign_transaction(builtTransaction, signer)
-    tx_hash = w3.eth.send_raw_transaction(signed_transaction.rawTransaction)
-    tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash, poll_latency=0.5)
-    decoded_tx_receipt = contract.events.Transfer().processReceipt(tx_receipt)
-    app.logger.info('tx_receipt : %s', tx_receipt)
-    app.logger.info('tx_receipt decoded : %s', decoded_tx_receipt)
-    response = {
-        'tx_hash' : decoded_tx_receipt[0]['transactionHash'].hex(), 
-        'tx_from' : decoded_tx_receipt[0]['args']['from'], 
-        'tx_recipient' : decoded_tx_receipt[0]['args']['to'], 
-        'tx_token_id': decoded_tx_receipt[0]['args']['tokenId']
-    }
-    return response
-
 global process_mint
-def process_mint(tx_uuid, tx, recipient_address, token_uri, bol_id):
-    conn = sqlengine.connect()
-    enitiumcontract = w3.eth.contract(address=CONTRACT_ADDRESS, abi=CONTRACT_ABI)
-    latest_block = w3.eth.get_block('latest')
-    committed_txs = w3.eth.get_transaction_count(OWNER_ACCOUNT)
-    pending_txs = w3.eth.get_transaction_count(OWNER_ACCOUNT, 'pending')
-    app.logger.info('transaction count confirmed : {0}, transaction count with pending : {1}'.format(committed_txs, pending_txs))
-    if tx['nonce'] == -1:
-        if(pending_txs > committed_txs):
-            tx['nonce'] = pending_txs
-        else:
-            tx['nonce'] = committed_txs
-        '''db_nonce = get_db_nonce(conn, enfty_tx_table, OWNER_ACCOUNT)
-        db_highest_failed_nonce = get_db_highest_failed_nonce(conn, enfty_tx_table, OWNER_ACCOUNT)
-        app.logger.info('nonce user : {0}, highest failed nonce user : {1}'.format(db_nonce, db_highest_failed_nonce))
-        computed_nonce = (int(db_nonce) + 1) if not db_nonce is None else 1
-        tx['nonce'] = computed_nonce
-        if computed_nonce < pending_txs: 
-            tx['nonce'] = pending_txs + 1
-        if db_highest_failed_nonce == pending_txs:
-            tx['nonce'] = db_highest_failed_nonce'''
-            #tx['gas'] = tx['gas'] * FORCE_GAS_MULTIPLIER
-        #if tx['gas'] > latest_block.gasLimit: tx['gas'] = latest_block.gasLimit
-    #else:
-        #tx['gas'] = tx['gas'] * FORCE_GAS_MULTIPLIER
-        #if tx['gas'] > latest_block.gasLimit: tx['gas'] = latest_block.gasLimit
-    enfty_tx = enitiumcontract.functions.mintNFT(recipient_address, token_uri).buildTransaction(tx)
-    signed_transaction = w3.eth.account.sign_transaction(enfty_tx, OWNER_PRIVATE_KEY)
+def process_mint(tx_uuid, recipient_address, token_uri, nonce=-1):
+    tx_db_manager = TxDbManager.get_tx_db_manager(DATABASE_URL, 'gatewayengine')
     try:
-        #app.logger.info('about to send transaction with gas : {0}'.format(tx['gas']))
-        tx_hash = w3.eth.send_raw_transaction(signed_transaction.rawTransaction)
-        app.logger.info('tx sent with hash : %s and nonce : %s', tx_hash.hex(), tx['nonce'])
-        u = enfty_tx_table.update().values(
-            status__c = 'Sent',
-            last_status_change_date__c = datetime.now(timezone.utc),
-            tx_hash__c = tx_hash.hex(),
-            nonce__c = tx['nonce']
-        ).where(and_(
-            enfty_tx_table.c.gateway_id__c == str(tx_uuid), 
-            enfty_tx_table.c.bill_of_lading__c == bol_id)
-        )
-        conn.execute(u)
-        app.logger.info('Waiting for receipt')
-        tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash, poll_latency=0.5)
-        decoded_tx_receipt = enitiumcontract.events.Transfer().processReceipt(tx_receipt)
-        app.logger.info('tx_receipt : %s', tx_receipt)
-        app.logger.info('tx_receipt decoded : %s', decoded_tx_receipt)
-        u = enfty_tx_table.update().values(
-            tx_hash__c = decoded_tx_receipt[0]['transactionHash'].hex(),
-            from_address__c = decoded_tx_receipt[0]['args']['from'], 
-            to_address__c = decoded_tx_receipt[0]['args']['to'], 
-            token_id__c = decoded_tx_receipt[0]['args']['tokenId'],
-            status__c = 'Cleared',
-            last_status_change_date__c = datetime.now(timezone.utc),
-        ).where(and_(
-            enfty_tx_table.c.tx_hash__c == tx_hash.hex(), 
-            enfty_tx_table.c.bill_of_lading__c == bol_id)
-        )
-        conn.execute(u)
-        conn.close()
+        contract = EnftyContract.get_enfty_contract()
+        if nonce != -1 and nonce >= 0:
+            tx_result = contract.mint(recipient_address, token_uri, nonce)
+        else :
+            tx_result = contract.mint(recipient_address, token_uri)
+        log.debug('tx sent with hash : %s and nonce : %s', tx_result['tx_hash'].hex(), tx_result['nonce'])
+        tx_db_manager.update_tx_as_sent(tx_uuid, tx_result['tx_hash'], tx_result['tx'])
+        log.debug('Waiting for receipt')
+        tx_receipt = contract.wait_for_tx_receipt(tx_result['tx_hash'])
+        tx_db_manager.update_tx_with_receipt(tx_uuid, tx_receipt)
     except ValueError as ve:
-        app.logger.info('ValueError thrown with value : {0}'.format(ve))
-        u = enfty_tx_table.update().values(
-            status__c = 'Failed',
-            last_status_change_date__c = datetime.now(timezone.utc),
-            error_code__c = str(ve.args[0]['code']),
-            error_message__c = str(ve.args[0]['message'])
-        ).where(
-           enfty_tx_table.c.gateway_id__c == str(tx_uuid)
-        )
-        conn.execute(u)
-        conn.close()
+        log.error('ValueError thrown with value : {0}'.format(ve))
+        tx_db_manager.update_tx_as_failed(tx_uuid, str(ve.args[0]['code']), str(ve.args[0]['message']))
     except exceptions.TimeExhausted as te:
-        app.logger.info('TimeExhausted error thrown with value : {0}'.format(te))
-        u = enfty_tx_table.update().values(
-            status__c = 'Failed',
-            last_status_change_date__c = datetime.now(timezone.utc),
-            error_code__c = "0",
-            error_message__c = str(te.args[0])
-        ).where(
-            enfty_tx_table.c.gateway_id__c == str(tx_uuid)
-        )
-        conn.execute(u)
-        conn.close()
+        log.error('TimeExhausted error thrown with value : {0}'.format(te))
+        tx_db_manager.update_tx_as_failed(tx_uuid, "0", str(te.args[0]))
 
 global process_transfer
 def process_transfer(tx_uuid, tx, from_address, from_pk, recipient_address, token_id, bol_id):
@@ -278,3 +205,18 @@ def get_db_highest_failed_nonce(conn, tx_table, from_address):
         )
     ).scalar()
     return db_highest_failed
+
+'''db_nonce = get_db_nonce(conn, enfty_tx_table, OWNER_ACCOUNT)
+db_highest_failed_nonce = get_db_highest_failed_nonce(conn, enfty_tx_table, OWNER_ACCOUNT)
+app.logger.info('nonce user : {0}, highest failed nonce user : {1}'.format(db_nonce, db_highest_failed_nonce))
+computed_nonce = (int(db_nonce) + 1) if not db_nonce is None else 1
+tx['nonce'] = computed_nonce
+if computed_nonce < pending_txs: 
+tx['nonce'] = pending_txs + 1
+if db_highest_failed_nonce == pending_txs:
+tx['nonce'] = db_highest_failed_nonce'''
+#tx['gas'] = tx['gas'] * FORCE_GAS_MULTIPLIER
+#if tx['gas'] > latest_block.gasLimit: tx['gas'] = latest_block.gasLimit
+#else:
+#tx['gas'] = tx['gas'] * FORCE_GAS_MULTIPLIER
+#if tx['gas'] > latest_block.gasLimit: tx['gas'] = latest_block.gasLimit

@@ -42,13 +42,30 @@ class EnftyContract(object):
         assert(create_key == EnftyContract.__create_key), "Can't craete enftycontract directly, use static getter"
         pass
 
-    def mint(self, tx):
-        pass
+    def mint(self, recipient_address, token_uri, nonce):
+        tx = self.__build_tx(OWNER_ACCOUNT, nonce)
+        return self.__mint(recipient_address, token_uri, tx)
+
+    def mint(self, recipient_address, token_uri):
+        tx = self.__build_tx(OWNER_ACCOUNT)
+        return self.__mint(recipient_address, token_uri, tx)
+
+    def __mint(self, recipient_address, token_uri, tx):
+        try:
+            enfty_tx = EnftyContract.__contract.functions.mintNFT(recipient_address, token_uri).buildTransaction(tx)
+            signed_transaction = EnftyContract.__w3.eth.account.sign_transaction(enfty_tx, OWNER_PRIVATE_KEY)
+            tx_hash = EnftyContract.__w3.eth.send_raw_transaction(signed_transaction.rawTransaction)
+            return {'tx_hash':tx_hash, 'tx':tx}
+        except ValueError as ve:
+            raise ValueError(ve)
+        except exceptions.TimeExhausted as te:
+            raise exceptions.TimeExhausted(te)
 
     def transfer(self, tx):
         pass
 
     def get_token_uri(self, token_id):
+        if not EnftyContract.__w3.isConnected(): raise LogicError({"code": "Code Error", "description": "W3 not initialized"}, 500)
         try:
             tokenURI = EnftyContract.__contract.functions.tokenURI(int(token_id)).call()
             m = re.search(r'{.+}', tokenURI)
@@ -57,3 +74,42 @@ class EnftyContract(object):
         except exceptions.ContractLogicError as e:
             log.debug('exception : {0}'.format(e))
             raise LogicError({"code": "Blockchain Error", "description": "Smart contract returned exception: {0}".format(e)}, 500)
+
+    def __build_tx(self, from_address):
+        committed_txs = EnftyContract.__w3.eth.get_transaction_count(from_address)
+        pending_txs = EnftyContract.__w3.eth.get_transaction_count(from_address, 'pending')
+        log.debug('transaction count confirmed : {0}, transaction count with pending : {1}'.format(committed_txs, pending_txs))
+        if(pending_txs > committed_txs):
+            nonce = pending_txs
+        else:
+            nonce = committed_txs
+        return {
+            'from': from_address,
+            'chainId': 3,
+            #'gas': 2000000,
+            'maxFeePerGas': EnftyContract.__w3.toWei(MAX_FEE_PER_GAS, 'gwei'),
+            'maxPriorityFeePerGas': EnftyContract.__w3.toWei(MAX_PRIORITY_FEE_PER_GAS, 'gwei'),
+            'nonce': int(nonce)
+        }
+
+    def __build_tx(self, from_address, nonce):
+        return {
+            'from': from_address,
+            'chainId': 3,
+            #'gas': 2000000,
+            'maxFeePerGas': EnftyContract.__w3.toWei(MAX_FEE_PER_GAS, 'gwei'),
+            'maxPriorityFeePerGas': EnftyContract.__w3.toWei(MAX_PRIORITY_FEE_PER_GAS, 'gwei'),
+            'nonce': int(nonce)
+        }
+
+    def wait_for_tx_receipt(self, tx_hash):
+        try:
+            tx_receipt = EnftyContract.__w3.eth.wait_for_transaction_receipt(tx_hash, poll_latency=0.5)
+            decoded_tx_receipt = EnftyContract.__contract.events.Transfer().processReceipt(tx_receipt)
+            log.debug('tx_receipt : %s', tx_receipt)
+            log.debug('tx_receipt decoded : %s', decoded_tx_receipt)
+            return decoded_tx_receipt
+        except exceptions.TimeExhausted as te:
+            raise exceptions.TimeExhausted(te)
+        except ValueError as ve:
+            raise ValueError(ve)

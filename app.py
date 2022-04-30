@@ -159,7 +159,7 @@ def mint():
         to_address=OWNER_ACCOUNT,
         bill_of_lading_id=sane_form['bol_id'],
         tx_type='Minting')
-    #q_high.enqueue(process_mint, args=(tx_uuid, tx, sane_form['recipient_address'], ipfs_response.text, sane_form['bol_id']))
+    #q_high.enqueue(process_mint, args=(tx_uuid, sane_form['recipient_address'], ipfs_response.text))
     return { 'tx_uuid': tx_db['uuid'], 'job_enqueued' : 'ok', 'postgre_id': tx_db['id']}
 
 @app.route('/transfer', methods=['POST'])
@@ -248,16 +248,6 @@ def burn():
 @requires_auth
 def getTokenURI(tokenId):
     if not requires_scope('access:gateway'): raise AuthError({"code": "Unauthorized", "description": "You don't have access to this resource"}, 403)
-    if not w3.isConnected(): raise LogicError({"code": "Code Error", "description": "W3 not initialized"}, 500)
-    """try:
-        enitiumcontract = w3.eth.contract(address=CONTRACT_ADDRESS, abi=CONTRACT_ABI)
-        tokenURI = enitiumcontract.functions.tokenURI(int(tokenId)).call()
-        m = re.search(r'{.+}', tokenURI)
-        app.logger.info('tokenURI : {0}; m : {0}'.format(tokenURI, m.group(0)))
-        return m.group(0)
-    except exceptions.ContractLogicError as e:
-        app.logger.info('exception : {0}'.format(e))
-        raise LogicError({"code": "Blockchain Error", "description": "Smart contract returned exception: {0}".format(e)}, 500)"""
     contract = EnftyContract.get_enfty_contract()
     token_uri = contract.get_token_uri(tokenId)
     return token_uri
