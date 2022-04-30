@@ -1,10 +1,10 @@
-import os
 import json
-from flask import Flask, request, _request_ctx_stack
-from six.moves.urllib.request import urlopen
-from functools import wraps
+import os
 from exceptions import AuthError
+from flask import Flask, request, _request_ctx_stack
+from functools import wraps
 from jose import jwt
+from six.moves.urllib.request import urlopen
 
 app = Flask(__name__)
 AUTH0_DOMAIN = os.environ.get('AUTH0_DOMAIN', '')
