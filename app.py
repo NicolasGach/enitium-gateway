@@ -1,17 +1,14 @@
 # app.py
 import json
 import os
-import re
 import requests
-import uuid
 import werkzeug.exceptions as ex
 from auth0 import AuthError, requires_auth, requires_scope
-from datetime import datetime, timezone
 from decorators import requires_post_params, requires_w3_access
 from eth_abi import decode_single
 from exceptions import AuthError, LogicError
 from flask import Flask, request, jsonify, abort
-from helpful_scripts import decrypt_sf_aes, sign_and_send_w3_transaction_transfer_type, sanitize_dict, process_mint, process_transfer
+from helpful_scripts import decrypt_sf_aes, sanitize_dict, process_mint, process_transfer
 from logging import DEBUG
 from pathlib import Path
 from rq import Queue
@@ -159,7 +156,7 @@ def mint():
         to_address=OWNER_ACCOUNT,
         bill_of_lading_id=sane_form['bol_id'],
         tx_type='Minting')
-    #q_high.enqueue(process_mint, args=(tx_uuid, sane_form['recipient_address'], ipfs_response.text))
+    q_high.enqueue(process_mint, args=(tx_db['uuid'], sane_form['recipient_address'], ipfs_response.text))
     return { 'tx_uuid': tx_db['uuid'], 'job_enqueued' : 'ok', 'postgre_id': tx_db['id']}
 
 @app.route('/transfer', methods=['POST'])
