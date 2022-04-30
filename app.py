@@ -19,10 +19,10 @@ from sqlalchemy import create_engine, MetaData, Table, and_, func
 from sqlalchemy.sql import select
 from sqlalchemy.orm import sessionmaker
 from txmanager import TxDbManager
+from enftycontract import EnftyContract
 from web3 import Web3, exceptions
 from web3.gas_strategies.time_based import medium_gas_price_strategy
 from worker import conn
-#from classes import W3EnitiumContract
 
 #contract : 0x855539e32608298cF253dC5bFb25043D19692f6a
 #upgradeable : 0xdE2b51ba8888e401725Df10328EE5063fdaF1a3E
@@ -31,7 +31,7 @@ app = Flask(__name__)
 app.logger.setLevel(DEBUG)
 AES_KEY = os.environ.get('AES_KEY', '')
 INFURA_NODE_URL = os.environ.get('INFURA_NODE_URL', '')
-w3 = Web3(Web3.HTTPProvider(os.environ['INFURA_NODE_URL']))
+w3 = Web3(Web3.HTTPProvider(INFURA_NODE_URL))
 w3.eth.set_gas_price_strategy(medium_gas_price_strategy)
 CONTRACT_ADDRESS = os.environ.get('CONTRACT_ADDRESS', '')
 try:
@@ -166,18 +166,17 @@ def mint():
 @requires_auth
 @requires_post_params(['from_address', 'from_pk', 'to_address', 'token_id', 'vector', 'bol_id'])
 def transfer():
-    if not requires_scope('access:gateway'):
-        raise AuthError({"code": "Unauthorized", "description": "You don't have access to this resource"}, 403)
-    if not w3.isConnected():
-        raise LogicError({"code": "Code Error", "description": "W3 not initialized"}, 500)
+    if not requires_scope('access:gateway'): raise AuthError({"code": "Unauthorized", "description": "You don't have access to this resource"}, 403)
+    if not w3.isConnected(): raise LogicError({"code": "Code Error", "description": "W3 not initialized"}, 500)
+    
     sane_form = sanitize_dict(request.form)
     app.logger.info('sane_form : %s', sane_form)
     from_pk = decrypt_sf_aes(sane_form['from_pk'], AES_KEY, sane_form['vector'])
-    if not w3.isAddress(sane_form['from_address']) or not w3.isAddress(sane_form['to_address']):
-        raise LogicError({"code": "Request Error", "description": "Bad request, input not a valid address"}, 400)
+    
+    if not w3.isAddress(sane_form['from_address']) or not w3.isAddress(sane_form['to_address']): raise LogicError({"code": "Request Error", "description": "Bad request, input not a valid address"}, 400)
     app.logger.info('Before get balance ...')
-    if not w3.eth.get_balance(sane_form['from_address']) > 200000:
-        raise LogicError({"code": "Request Error", "description": "The sender account has no funds for transfer"}, 400)
+    if not w3.eth.get_balance(sane_form['from_address']) > 200000: raise LogicError({"code": "Request Error", "description": "The sender account has no funds for transfer"}, 400)
+    
     nonce = -1
     if 'nonce' in sane_form:
         app.logger.info('Nonce forced in transaction with value : {0}'.format(nonce))
@@ -190,21 +189,15 @@ def transfer():
         'maxPriorityFeePerGas': w3.toWei(MAX_PRIORITY_FEE_PER_GAS, 'gwei'),
         'nonce': int(nonce)
     }
-    tx_uuid = uuid.uuid4()
-    ins = enfty_tx_table.insert().values(
-        sent_from__c = sane_form['from_address'],
-        from_address__c = sane_form['from_address'],
-        to_address__c = sane_form['to_address'],
-        token_id__c = sane_form['token_id'],
-        gateway_id__c =  tx_uuid,
-        bill_of_lading__c = sane_form['bol_id'],
-        status__c = 'Processing',
-        last_status_change_date__c = datetime.now(timezone.utc),
-        type__c = 'Transfer')
-    conn = sqlengine.connect()
-    result = conn.execute(ins)
-    conn.close()
-    q_high.enqueue(process_transfer, args=(
+    tx_db_manager = TxDbManager.get_tx_db_manager(DATABASE_URL, 'gatewayengine')
+    tx_db = tx_db_manager.create_tx_in_db(
+        sent_from=sane_form['from_address'], 
+        to_address=sane_form['to_address'],
+        bill_of_lading_id=sane_form['bol_id'],
+        tx_type='Tranfer',
+        from_address=sane_form['from_address'],
+        token_id=sane_form['token_id'])
+    """q_high.enqueue(process_transfer, args=(
         tx_uuid, 
         tx, 
         sane_form['from_address'],
@@ -212,8 +205,8 @@ def transfer():
         sane_form['to_address'], 
         sane_form['token_id'],
         sane_form['bol_id']
-    ))
-    return { 'tx_uuid': tx_uuid, 'job_enqueued' : 'ok', 'postgre_id': result.inserted_primary_key[0] }
+    ))"""
+    return { 'tx_uuid': tx_db['uuid'], 'job_enqueued' : 'ok', 'postgre_id': tx_db['id'] }
 
 @app.route('/burn', methods=['POST'])
 @requires_auth
@@ -254,11 +247,9 @@ def burn():
 @app.route('/tokenURI/<tokenId>', methods=['GET'])
 @requires_auth
 def getTokenURI(tokenId):
-    if not requires_scope('access:gateway'):
-        raise AuthError({"code": "Unauthorized", "description": "You don't have access to this resource"}, 403)
-    if not w3.isConnected():
-        raise LogicError({"code": "Code Error", "description": "W3 not initialized"}, 500)
-    try:
+    if not requires_scope('access:gateway'): raise AuthError({"code": "Unauthorized", "description": "You don't have access to this resource"}, 403)
+    if not w3.isConnected(): raise LogicError({"code": "Code Error", "description": "W3 not initialized"}, 500)
+    """try:
         enitiumcontract = w3.eth.contract(address=CONTRACT_ADDRESS, abi=CONTRACT_ABI)
         tokenURI = enitiumcontract.functions.tokenURI(int(tokenId)).call()
         m = re.search(r'{.+}', tokenURI)
@@ -266,7 +257,10 @@ def getTokenURI(tokenId):
         return m.group(0)
     except exceptions.ContractLogicError as e:
         app.logger.info('exception : {0}'.format(e))
-        raise LogicError({"code": "Blockchain Error", "description": "Smart contract returned exception: {0}".format(e)}, 500)
+        raise LogicError({"code": "Blockchain Error", "description": "Smart contract returned exception: {0}".format(e)}, 500)"""
+    contract = EnftyContract.get_enfty_contract()
+    token_uri = contract.get_token_uri(tokenId)
+    return token_uri
 
 @app.route('/receipt')
 @requires_auth
