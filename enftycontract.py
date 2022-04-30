@@ -85,8 +85,26 @@ class EnftyContract(object):
             else:
                 raise exceptions.TimeExhausted()
 
-    def transfer(self, tx):
-        pass
+    def transfer(self, from_address, from_pk, to_address, token_id, nonce=-1):
+        tx = self.__build_tx(from_address, nonce)
+        return self.__transfer(from_address, from_pk, to_address, token_id, tx)
+
+    def __transfer(self, from_address, from_pk, to_address, token_id, tx):
+        try:
+            enfty_tx = EnftyContract.__contract.functions.transferFrom(from_address, to_address, int(token_id)).buildTransaction(tx)
+            signed_transaction = EnftyContract.__w3.eth.account.sign_transaction(enfty_tx, from_pk)
+            tx_hash = EnftyContract.__w3.eth.send_raw_transaction(signed_transaction.rawTransaction)
+            return {'tx_hash':tx_hash, 'tx':tx}
+        except ValueError as ve:
+            if isinstance(ve.args[0], str):
+                raise ValueError(ve.args[0]) from ve
+            else:
+                raise ValueError() from ve
+        except exceptions.TimeExhausted as te:
+            if isinstance(te.args[0], str):
+                raise exceptions.TimeExhausted(te.args[0])
+            else:
+                raise exceptions.TimeExhausted()
 
     def get_token_uri(self, token_id):
         if not EnftyContract.__w3.isConnected(): raise LogicError({"code": "Code Error", "description": "W3 not initialized"}, 500)

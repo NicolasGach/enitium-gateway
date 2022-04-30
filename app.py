@@ -137,26 +137,19 @@ def mint():
     ipfs_response = requests.post(INFURA_IPFS_URL + '/api/v0/block/get', params={'arg': sane_form['token_hash']}, auth=(IPFS_PROJECT_ID, IPFS_PROJECT_SECRET))
     if not ipfs_response.status_code == 200:
         raise LogicError({"code": "Request Error", "description": "Token not found on IPFS host"}, 400)
-    
-    nonce = -1
-    if 'nonce' in sane_form:
-        app.logger.info('Nonce forced in transaction with value : {0}'.format(nonce))
-        nonce = sane_form['nonce']
-    tx = {
-        'from': OWNER_ACCOUNT,
-        'chainId': 3,
-        #'gas': 2000000,
-        'maxFeePerGas': w3.toWei(MAX_FEE_PER_GAS, 'gwei'),
-        'maxPriorityFeePerGas': w3.toWei(MAX_PRIORITY_FEE_PER_GAS, 'gwei'),
-        'nonce': int(nonce)
-    }
     tx_db_manager = TxDbManager.get_tx_db_manager(DATABASE_URL, 'gatewayengine')
     tx_db = tx_db_manager.create_tx_in_db(
         sent_from=OWNER_ACCOUNT, 
         to_address=OWNER_ACCOUNT,
         bill_of_lading_id=sane_form['bol_id'],
         tx_type='Minting')
-    q_high.enqueue(process_mint, args=(tx_db['uuid'], sane_form['recipient_address'], ipfs_response.text))
+    
+    nonce = -1
+    if 'nonce' in sane_form and int(sane_form['nonce'])>=0:
+        app.logger.info('Nonce forced in transaction with value : {0}'.format(nonce))
+        nonce = sane_form['nonce']
+    q_high.enqueue(process_mint, args=(tx_db['uuid'], sane_form['recipient_address'], ipfs_response.text, nonce))
+
     return { 'tx_uuid': tx_db['uuid'], 'job_enqueued' : 'ok', 'postgre_id': tx_db['id']}
 
 @app.route('/transfer', methods=['POST'])
@@ -174,18 +167,6 @@ def transfer():
     app.logger.info('Before get balance ...')
     if not w3.eth.get_balance(sane_form['from_address']) > 200000: raise LogicError({"code": "Request Error", "description": "The sender account has no funds for transfer"}, 400)
     
-    nonce = -1
-    if 'nonce' in sane_form:
-        app.logger.info('Nonce forced in transaction with value : {0}'.format(nonce))
-        nonce = sane_form['nonce']
-    tx = {
-        'from': sane_form['from_address'],
-        'chainId': 3,
-        #'gas': 2000000,
-        'maxFeePerGas': w3.toWei(MAX_FEE_PER_GAS, 'gwei'),
-        'maxPriorityFeePerGas': w3.toWei(MAX_PRIORITY_FEE_PER_GAS, 'gwei'),
-        'nonce': int(nonce)
-    }
     tx_db_manager = TxDbManager.get_tx_db_manager(DATABASE_URL, 'gatewayengine')
     tx_db = tx_db_manager.create_tx_in_db(
         sent_from=sane_form['from_address'], 
@@ -194,15 +175,11 @@ def transfer():
         tx_type='Tranfer',
         from_address=sane_form['from_address'],
         token_id=sane_form['token_id'])
-    """q_high.enqueue(process_transfer, args=(
-        tx_uuid, 
-        tx, 
-        sane_form['from_address'],
-        from_pk,
-        sane_form['to_address'], 
-        sane_form['token_id'],
-        sane_form['bol_id']
-    ))"""
+    nonce = -1
+    if 'nonce' in sane_form and int(sane_form['nonce']) >=0:
+        app.logger.info('Nonce forced in transaction with value : {0}'.format(nonce))
+        nonce = sane_form['nonce']
+    q_high.enqueue(process_transfer, args=(tx_db['uuid'], sane_form['from_address'], from_pk, sane_form['to_address'], sane_form['token_id'], nonce))
     return { 'tx_uuid': tx_db['uuid'], 'job_enqueued' : 'ok', 'postgre_id': tx_db['id'] }
 
 @app.route('/burn', methods=['POST'])
