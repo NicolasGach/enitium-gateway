@@ -1,4 +1,5 @@
 import logging
+import os
 import uuid
 from datetime import datetime, timezone
 from sqlalchemy import create_engine, MetaData, Table, and_, func
@@ -8,6 +9,8 @@ from sqlalchemy.sql import select
 
 logging.basicConfig(format = '%(asctime)s %(message)s', handlers=[logging.StreamHandler()])
 log = logging.getLogger('TxDbManager')
+PYTHON_LOG_LEVEL = os.environ.get('PYTHON_LOG_LEVEL', 'INFO')
+log.setLevel(logging.DEBUG)
 
 class TxDbManager(object):
 
@@ -15,7 +18,6 @@ class TxDbManager(object):
     __create_key = object()
     __engine = None
     __txs = None
-    __db_session = None
 
     @classmethod
     def get_tx_db_manager(cls, database_url, logging_name):
@@ -26,7 +28,6 @@ class TxDbManager(object):
             Base = automap_base(metadata=metadata_obj)
             Base.prepare()
             cls.__txs = Base.classes.enfty_bol_transfer_data__c
-            #cls.__txs = metadata_obj.tables['salesforce.enfty_bol_transfer_data__c']
             log.debug('table keys : {0}'.format(metadata_obj.tables.keys()))
             cls.__singleton = cls(cls.__create_key, cls.__engine)
         return cls.__singleton
