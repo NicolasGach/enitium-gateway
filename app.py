@@ -11,7 +11,6 @@ from decorators import requires_post_params, requires_w3_access
 from eth_abi import decode_single
 from exceptions import AuthError, LogicError
 from flask import Flask, request, jsonify, abort
-from flask_cors import cross_origin
 from helpful_scripts import decrypt_sf_aes, sign_and_send_w3_transaction_transfer_type, sanitize_dict, process_mint, process_transfer
 from logging import DEBUG
 from pathlib import Path
