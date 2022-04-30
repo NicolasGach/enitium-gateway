@@ -31,7 +31,7 @@ class EnftyContract(object):
         if cls.__singleton == None:
             cls.__singleton = EnftyContract(cls.__create_key)
             cls.__w3 = Web3(Web3.HTTPProvider(INFURA_NODE_URL))
-            cls.__w3.eth.set_gas_price_strategy(medium_gas_price_strategy)
+            #cls.__w3.eth.set_gas_price_strategy(medium_gas_price_strategy)
             with open('EnitiumNFT.json', 'r') as f:
                 json_contract = json.load(f)
             cls.__contract_abi = json_contract["abi"]
