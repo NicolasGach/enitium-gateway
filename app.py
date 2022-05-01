@@ -132,7 +132,7 @@ def transfer():
 
 @app.route('/burn', methods=['POST'])
 @requires_auth
-@requires_post_params(['token_id', 'from_address', 'from_pk', 'vector'])
+@requires_post_params(['token_id', 'from_address', 'from_pk', 'vector', 'bol_id'])
 def burn():
     if not requires_scope('access:gateway'): raise AuthError({"code": "Unauthorized", "description": "You don't have access to this resource"}, 403)
     
@@ -146,6 +146,7 @@ def burn():
     tx_db_manager = TxDbManager.get_tx_db_manager(g.DATABASE_URL, 'gatewayengine')
     tx_db = tx_db_manager.create_tx_in_db(
         sent_from=sane_form['from_address'],
+        to_address=None,
         bill_of_lading_id=sane_form['bol_id'],
         tx_type='Burn',
         from_address=sane_form['from_address'],
