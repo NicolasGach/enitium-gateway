@@ -1,5 +1,4 @@
-import logging
-import os
+import g
 import uuid
 from datetime import datetime, timezone
 from sqlalchemy import create_engine, MetaData, Table, and_, func
@@ -7,10 +6,7 @@ from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql import select, update
 
-logging.basicConfig(format = '%(asctime)s %(message)s', handlers=[logging.StreamHandler()])
-log = logging.getLogger('TxDbManager')
-PYTHON_LOG_LEVEL = os.environ.get('PYTHON_LOG_LEVEL', 'INFO')
-log.setLevel(logging.DEBUG)
+log = g.log
 
 class TxDbManager(object):
 
@@ -33,7 +29,7 @@ class TxDbManager(object):
         return cls.__singleton
 
     def __init__ (self, create_key, engine):
-        assert(create_key == TxDbManager.__create_key), "TxDbManager instances must be obtained via gt_TxDbManager()"
+        assert(create_key == TxDbManager.__create_key), "TxDbManager instances must be obtained via get_tx_db_manager()"
         self.sessionmaker = sessionmaker(engine)
 
     def create_tx_in_db(self, bill_of_lading_id, sent_from, to_address, tx_type, from_address='', token_id=''):
@@ -95,3 +91,44 @@ class TxDbManager(object):
                 )
             )
             session.commit()
+
+    def get_highest_nonce(self, from_address):
+        with self.sessionmaker() as session:
+            db_nonce = session.execute(
+                select(
+                    func.max(TxDbManager.__txs.nonce__c)
+                ).where(
+                    TxDbManager.__txs.from_address__c == from_address)
+            ).scalar()
+            session.commit()
+            return db_nonce
+
+    def get_db_nonce(self, from_address):
+        with self.sessionmaker() as session:
+            db_nonce = session.execute(
+                select(
+                    func.max(TxDbManager.__txs.nonce__c)
+                ).where(
+                    and_(
+                        TxDbManager.__txs.sent_from__c == from_address,
+                        TxDbManager.__txs.status__c == 'Cleared'
+                    )
+                )
+            ).scalar()
+            session.commit()
+            return db_nonce
+
+
+    def get_db_highest_failed_nonce(self, from_address):
+        with self.sessionmaker() as session:
+            db_highest_failed = session.execute(
+                select(
+                    func.max(TxDbManager.__txs.nonce__c)
+                ).where(
+                    and_(
+                        TxDbManager.__txs.sent_from__c == from_address,
+                        TxDbManager.__txs.status__c == 'Failed'
+                    )
+                )
+            ).scalar()
+            return db_highest_failed
