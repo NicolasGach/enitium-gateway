@@ -54,7 +54,7 @@ def process_transfer(tx_uuid, from_address, from_pk, recipient_address, token_id
         tx_db_manager.update_tx_as_failed(tx_uuid, "0", str(te.args[0]))
 
 global process_burn
-def proces_burn(tx_uuid, from_address, from_pk, token_id, nonce=-1):
+def process_burn(tx_uuid, from_address, from_pk, token_id, nonce=-1):
     tx_db_manager = TxDbManager.get_tx_db_manager(g.DATABASE_URL, 'gatewayengine')
     try:
         contract = EnftyContract.get_enfty_contract()

@@ -6,7 +6,7 @@ from auth0 import AuthError, requires_auth, requires_scope
 from decorators import requires_post_params
 from exceptions import AuthError, LogicError
 from flask import Flask, request, jsonify
-from worker_scripts import process_mint, process_transfer
+from worker_scripts import process_mint, process_transfer, process_burn
 from logging import DEBUG
 from rq import Queue
 from crypto import Crypto
