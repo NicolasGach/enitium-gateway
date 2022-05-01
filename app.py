@@ -110,7 +110,7 @@ def transfer():
     
     sane_form = sanitize_dict(request.form)
     app.logger.debug('sane_form : %s', sane_form)
-    from_pk = Crypto.get_crypto().decrypt_sf_aes(sane_form['from_pk'], g.AES_KEY, sane_form['vector'])
+    from_pk = Crypto.decrypt_sf_aes(sane_form['from_pk'], g.AES_KEY, sane_form['vector'])
     
     EnftyContract.check_addresses(sane_form['from_address'], sane_form['to_address'])
     EnftyContract.check_minimum_balances(sane_form['from_address'])
@@ -138,7 +138,7 @@ def burn():
     
     sane_form = sanitize_dict(request.form)
     app.logger.debug('sane_form : %s', sane_form)
-    from_pk = Crypto.get_crypto().decrypt_sf_aes(sane_form['from_pk'], g.AES_KEY, sane_form['vector'])
+    from_pk = Crypto.decrypt_sf_aes(sane_form['from_pk'], g.AES_KEY, sane_form['vector'])
     
     EnftyContract.check_addresses(sane_form['from_address'])
     EnftyContract.check_minimum_balances(sane_form['from_address'])
@@ -175,7 +175,7 @@ def getReceipt():
 @requires_auth
 def decrypt_test():
     key = g.AES_KEY
-    return Crypto.get_crypto().decrypt_sf_aes(request.form['content'], key, request.form['vector'])
+    return Crypto.decrypt_sf_aes(request.form['content'], key, request.form['vector'])
 
 @app.errorhandler(500)
 def internal_error(e):

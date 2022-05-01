@@ -14,6 +14,7 @@ class Crypto(object):
     def get_crypto(cls):
         if cls.__singleton == None:
             cls.singleton = Crypto(cls.__create_key)
+        return cls.__singleton
     
     def __init__(self, create_key):
         assert(Crypto.__create_key == create_key), "Can't instantiate crypto, must use getter"
