@@ -141,11 +141,13 @@ class EnftyContract(object):
             raise ValueError(ve)
 
     def check_addresses(*addresses):
+        contract = EnftyContract.get_enfty_contract()
         for address in addresses:
-            if not EnftyContract.__w3.isAddress(address) :
+            if not contract.__w3.isAddress(address) :
                 raise LogicError({"code": "Request Error", "description": "Bad request, input not a valid address"}, 400)
 
     def check_minimum_balances(*addresses):
+        contract = EnftyContract.get_enfty_contract()
         for address in addresses:
-            if not EnftyContract.__w3.eth.get_balance(address) > 200000:
+            if not contract.__w3.eth.get_balance(address) > 200000:
                 raise LogicError({"code": "Request Error", "description": "The sender account has no funds or does not exist"}, 400)
