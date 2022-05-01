@@ -134,38 +134,28 @@ def transfer():
 @requires_auth
 @requires_post_params(['token_id', 'from_address', 'from_pk', 'vector'])
 def burn():
-    # if not requires_scope('access:gateway'):
-    #     raise AuthError({"code": "Unauthorized", "description": "You don't have access to this resource"}, 403)
-    # if not w3.isConnected():
-    #     raise LogicError({"code": "Code Error", "description": "W3 not initialized"}, 500)
-    # sane_form = sanitize_dict(request.form)
-    # app.logger.debug('sane_form : %s', sane_form)
-    # from_pk = Crypto.get_crypto().decrypt_sf_aes(sane_form['from_pk'], g.AES_KEY, sane_form['vector'])
-    # if w3.isAddress(sane_form['from_address']):
-    #     app.logger.debug('Before get balance ...')
-    #     if w3.eth.get_balance(sane_form['from_address']) > 200000:
-    #         enitiumcontract = w3.eth.contract(address=g.CONTRACT_ADDRESS, abi=g.CONTRACT_ABI)
-    #         try:
-    #             enitiumcontract.functions.tokenURI(int(sane_form['token_id'])).call()
-    #         except exceptions.ContractLogicError as e:
-    #             app.logger.debug('exception : {0}'.format(e))
-    #             raise LogicError({"code": "Blockchain Error", "description": "Smart contract returned exception, possibly trying to burn a non-existing token : {0}".format(e)}, 500)
-    #         nonce = w3.eth.get_transaction_count(sane_form['from_address'])
-    #         app.logger.debug('before sending transaction')
-    #         enfty_tx = enitiumcontract.functions.burn(int(sane_form['token_id'])
-    #         ).buildTransaction({
-    #             'from': sane_form['from_address'],
-    #             'chainId': 3,
-    #             'gas': 200000,
-    #             'maxFeePerGas': w3.toWei('2', 'gwei'),
-    #             'maxPriorityFeePerGas': w3.toWei('1', 'gwei'),
-    #             'nonce': nonce
-    #         })
-    #         #response = sign_and_send_w3_transaction_transfer_type(w3, enitiumcontract, enfty_tx, from_pk)
-    #         #return response
-            return ''
-    #     raise LogicError({"code": "Request Error", "description": "The sender account has no funds for transfer"}, 400)
-    # raise LogicError({"code": "Request Error", "description": "Bad request, input not a valid address"}, 400)
+    if not requires_scope('access:gateway'): raise AuthError({"code": "Unauthorized", "description": "You don't have access to this resource"}, 403)
+    
+    sane_form = sanitize_dict(request.form)
+    app.logger.debug('sane_form : %s', sane_form)
+    from_pk = Crypto.get_crypto().decrypt_sf_aes(sane_form['from_pk'], g.AES_KEY, sane_form['vector'])
+    
+    EnftyContract.check_addresses(sane_form['from_address'])
+    EnftyContract.check_minimum_balances(sane_form['from_address'])
+    
+    tx_db_manager = TxDbManager.get_tx_db_manager(g.DATABASE_URL, 'gatewayengine')
+    tx_db = tx_db_manager.create_tx_in_db(
+        sent_from=sane_form['from_address'],
+        bill_of_lading_id=sane_form['bol_id'],
+        tx_type='Burn',
+        from_address=sane_form['from_address'],
+        token_id=sane_form['token_id'])
+    nonce = -1
+    if 'nonce' in sane_form and int(sane_form['nonce']) >=0:
+        app.logger.debug('Nonce forced in transaction with value : {0}'.format(nonce))
+        nonce = sane_form['nonce']
+    q_high.enqueue(process_burn, args=(tx_db['uuid'], sane_form['from_address'], from_pk, sane_form['token_id'], nonce))
+    return { 'tx_uuid': tx_db['uuid'], 'job_enqueued' : 'ok', 'postgre_id': tx_db['id'] }
 
 @app.route('/tokenURI/<tokenId>', methods=['GET'])
 @requires_auth
