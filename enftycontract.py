@@ -1,3 +1,4 @@
+from txmanager import TxDbManager
 import g
 import json
 import re
@@ -51,6 +52,7 @@ class EnftyContract(object):
         }
 
     def mint(self, recipient_address, token_uri, nonce=-1):
+        if not EnftyContract.__w3.isConnected(): raise LogicError({"code": "Code Error", "description": "W3 not initialized"}, 500)
         tx = self.__build_tx(g.OWNER_ACCOUNT, nonce)
         return self.__mint(recipient_address, token_uri, tx)
 
@@ -72,6 +74,7 @@ class EnftyContract(object):
                 raise exceptions.TimeExhausted()
 
     def transfer(self, from_address, from_pk, to_address, token_id, nonce=-1):
+        if not EnftyContract.__w3.isConnected(): raise LogicError({"code": "Code Error", "description": "W3 not initialized"}, 500)
         tx = self.__build_tx(from_address, nonce)
         return self.__transfer(from_address, from_pk, to_address, token_id, tx)
 
@@ -114,3 +117,13 @@ class EnftyContract(object):
             raise exceptions.TimeExhausted(te)
         except ValueError as ve:
             raise ValueError(ve)
+
+    def check_addresses(*addresses):
+        for address in addresses:
+            if not EnftyContract.__w3.isAddress(address) :
+                raise LogicError({"code": "Request Error", "description": "Bad request, input not a valid address"}, 400)
+
+    def check_minimum_balances(*addresses):
+        for address in addresses:
+            if not EnftyContract.__w3.eth.get_balance(address) > 200000:
+                raise LogicError({"code": "Request Error", "description": "The sender account has no funds or does not exist"}, 400)

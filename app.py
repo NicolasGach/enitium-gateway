@@ -1,23 +1,17 @@
 # app.py
 import g
-import json
-import os
 import requests
 import werkzeug.exceptions as ex
 from auth0 import AuthError, requires_auth, requires_scope
-from decorators import requires_post_params, requires_w3_access
+from decorators import requires_post_params
 from exceptions import AuthError, LogicError
-from flask import Flask, request, jsonify, abort
+from flask import Flask, request, jsonify
 from worker_scripts import process_mint, process_transfer
 from logging import DEBUG
 from rq import Queue
-from sqlalchemy import create_engine, MetaData, Table, and_, func
-from sqlalchemy.sql import select
-from sqlalchemy.orm import sessionmaker
 from crypto import Crypto
 from txmanager import TxDbManager
 from enftycontract import EnftyContract
-from web3 import Web3, exceptions
 from worker import conn
 
 #contract : 0x855539e32608298cF253dC5bFb25043D19692f6a
@@ -26,31 +20,8 @@ from worker import conn
 app = Flask(__name__)
 app.logger.setLevel(DEBUG)
 
-w3 = Web3(Web3.HTTPProvider(g.INFURA_NODE_URL))
-
-try:
-    if os.path.isfile('EnitiumNFT.json'):
-        with open('EnitiumNFT.json', 'r') as f:
-            json_contract = json.load(f)
-    else:
-        json_contract = {'abi': ''}
-        raise LogicError({"code": "server error", "message": "contract abi not found"}, 500)
-except LogicError as le:
-    pass
-
 q_high = Queue('high', connection = conn)
 q_low = Queue('low', connection = conn)
-
-try:
-    sqlengine = create_engine(g.DATABASE_URL.replace('postgres://', 'postgresql://', 1), logging_name='gatewayengine')
-    Session = sessionmaker(sqlengine)
-except (TypeError, NameError):
-    Session = sessionmaker()
-    pass
-metadata_obj = MetaData(schema='salesforce')
-metadata_obj.reflect(bind=sqlengine)
-app.logger.info('table keys : %s', metadata_obj.tables.keys())
-enfty_tx_table = metadata_obj.tables['salesforce.enfty_bol_transfer_data__c']
 
 """Main module for the Enitium Gateway app
 
@@ -93,37 +64,29 @@ def test_nonce(testAddress):
 @app.route('/post_ipfs', methods=['POST'])
 @requires_auth
 def post_ipfs():
-    if requires_scope("access:gateway"):
-        if "file" in request.files:
-            app.logger.info('File content %s',request.files['file'].read())
-            params = {'file': request.files['file'].read()}
-            response = requests.post(
-                g.INFURA_IPFS_URL + '/api/v0/add', 
-                files=params,
-                auth=(g.IPFS_PROJECT_ID, g.IPFS_PROJECT_SECRET)
-            )
-            app.logger.info('Reponse %s', response)
-            return response.text
-        raise LogicError({"code": "Bad Request", "description": "No file input in request"}, 400)
-    raise AuthError({"code": "Unauthorized", "description": "You don't have access to this resource"}, 403)
+    if not requires_scope("access:gateway"): raise AuthError({"code": "Unauthorized", "description": "You don't have access to this resource"}, 403)
+    if not "file" in request.files: raise LogicError({"code": "Bad Request", "description": "No file input in request"}, 400)
+    app.logger.debug('File content %s',request.files['file'].read())
+    params = {'file': request.files['file'].read()}
+    response = requests.post(g.INFURA_IPFS_URL + '/api/v0/add', files=params, auth=(g.IPFS_PROJECT_ID, g.IPFS_PROJECT_SECRET))
+    app.logger.debug('Response %s', response)
+    return response.text
 
 @app.route('/mint', methods=['POST'])
 @requires_auth
 @requires_post_params(['recipient_address', 'token_hash', 'bol_id'])
-@requires_w3_access
 def mint():
     if not requires_scope("access:gateway"): raise AuthError({"code": "Unauthorized", "description": "You don't have access to this resource"}, 403)
-    if not w3.isConnected(): raise LogicError({"code": "Code Error", "description": "W3 not initialized"}, 500)
     
     sane_form = sanitize_dict(request.form)
-    app.logger.info('sane_form : %s', sane_form)
+    app.logger.debug('sane_form : %s', sane_form)
     
-    if not w3.isAddress(sane_form['recipient_address']): raise LogicError({"code": "Request Error", "description": "Bad request, input not a valid address"}, 400)
-    if not w3.eth.get_balance(sane_form['recipient_address']): raise LogicError({"code": "Request Error", "description": "The sender account has no funds or does not exist"}, 400)
+    EnftyContract.check_addresses(sane_form['recipient_address'])
+    EnftyContract.check_minimum_balances(g.OWNER_ACCOUNT)
     
     ipfs_response = requests.post(g.INFURA_IPFS_URL + '/api/v0/block/get', params={'arg': sane_form['token_hash']}, auth=(g.IPFS_PROJECT_ID, g.IPFS_PROJECT_SECRET))
-    if not ipfs_response.status_code == 200:
-        raise LogicError({"code": "Request Error", "description": "Token not found on IPFS host"}, 400)
+    if not ipfs_response.status_code == 200: raise LogicError({"code": "Request Error", "description": "Token not found on IPFS host"}, 400)
+
     tx_db_manager = TxDbManager.get_tx_db_manager(g.DATABASE_URL, 'gatewayengine')
     tx_db = tx_db_manager.create_tx_in_db(
         sent_from=g.OWNER_ACCOUNT, 
@@ -133,7 +96,7 @@ def mint():
     
     nonce = -1
     if 'nonce' in sane_form and int(sane_form['nonce'])>=0:
-        app.logger.info('Nonce forced in transaction with value : {0}'.format(nonce))
+        app.logger.debug('Nonce forced in transaction with value : {0}'.format(nonce))
         nonce = sane_form['nonce']
     q_high.enqueue(process_mint, args=(tx_db['uuid'], sane_form['recipient_address'], ipfs_response.text, nonce))
 
@@ -144,15 +107,13 @@ def mint():
 @requires_post_params(['from_address', 'from_pk', 'to_address', 'token_id', 'vector', 'bol_id'])
 def transfer():
     if not requires_scope('access:gateway'): raise AuthError({"code": "Unauthorized", "description": "You don't have access to this resource"}, 403)
-    if not w3.isConnected(): raise LogicError({"code": "Code Error", "description": "W3 not initialized"}, 500)
     
     sane_form = sanitize_dict(request.form)
-    app.logger.info('sane_form : %s', sane_form)
+    app.logger.debug('sane_form : %s', sane_form)
     from_pk = Crypto.get_crypto().decrypt_sf_aes(sane_form['from_pk'], g.AES_KEY, sane_form['vector'])
     
-    if not w3.isAddress(sane_form['from_address']) or not w3.isAddress(sane_form['to_address']): raise LogicError({"code": "Request Error", "description": "Bad request, input not a valid address"}, 400)
-    app.logger.info('Before get balance ...')
-    if not w3.eth.get_balance(sane_form['from_address']) > 200000: raise LogicError({"code": "Request Error", "description": "The sender account has no funds for transfer"}, 400)
+    EnftyContract.check_addresses(sane_form['from_address'], sane_form['to_address'])
+    EnftyContract.check_minimum_balances(sane_form['from_address'])
     
     tx_db_manager = TxDbManager.get_tx_db_manager(g.DATABASE_URL, 'gatewayengine')
     tx_db = tx_db_manager.create_tx_in_db(
@@ -164,7 +125,7 @@ def transfer():
         token_id=sane_form['token_id'])
     nonce = -1
     if 'nonce' in sane_form and int(sane_form['nonce']) >=0:
-        app.logger.info('Nonce forced in transaction with value : {0}'.format(nonce))
+        app.logger.debug('Nonce forced in transaction with value : {0}'.format(nonce))
         nonce = sane_form['nonce']
     q_high.enqueue(process_transfer, args=(tx_db['uuid'], sane_form['from_address'], from_pk, sane_form['to_address'], sane_form['token_id'], nonce))
     return { 'tx_uuid': tx_db['uuid'], 'job_enqueued' : 'ok', 'postgre_id': tx_db['id'] }
@@ -178,19 +139,19 @@ def burn():
     # if not w3.isConnected():
     #     raise LogicError({"code": "Code Error", "description": "W3 not initialized"}, 500)
     # sane_form = sanitize_dict(request.form)
-    # app.logger.info('sane_form : %s', sane_form)
+    # app.logger.debug('sane_form : %s', sane_form)
     # from_pk = Crypto.get_crypto().decrypt_sf_aes(sane_form['from_pk'], g.AES_KEY, sane_form['vector'])
     # if w3.isAddress(sane_form['from_address']):
-    #     app.logger.info('Before get balance ...')
+    #     app.logger.debug('Before get balance ...')
     #     if w3.eth.get_balance(sane_form['from_address']) > 200000:
     #         enitiumcontract = w3.eth.contract(address=g.CONTRACT_ADDRESS, abi=g.CONTRACT_ABI)
     #         try:
     #             enitiumcontract.functions.tokenURI(int(sane_form['token_id'])).call()
     #         except exceptions.ContractLogicError as e:
-    #             app.logger.info('exception : {0}'.format(e))
+    #             app.logger.debug('exception : {0}'.format(e))
     #             raise LogicError({"code": "Blockchain Error", "description": "Smart contract returned exception, possibly trying to burn a non-existing token : {0}".format(e)}, 500)
     #         nonce = w3.eth.get_transaction_count(sane_form['from_address'])
-    #         app.logger.info('before sending transaction')
+    #         app.logger.debug('before sending transaction')
     #         enfty_tx = enitiumcontract.functions.burn(int(sane_form['token_id'])
     #         ).buildTransaction({
     #             'from': sane_form['from_address'],
