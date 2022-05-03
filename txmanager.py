@@ -1,3 +1,8 @@
+"""Class controlling interactions with the postgre database pertaining to transaction log management.
+
+    .. moduleAuthor:: Nicolas Gach <nicolas@e-nitium.com>
+
+"""
 import g
 import uuid
 from datetime import datetime, timezone
@@ -9,6 +14,8 @@ from sqlalchemy.sql import select, update
 log = g.log
 
 class TxDbManager(object):
+    """Singleton class controlling interactions with the transaction log in the Postgre database.
+    """
 
     __singleton = None
     __create_key = object()
@@ -17,6 +24,14 @@ class TxDbManager(object):
 
     @classmethod
     def get_tx_db_manager(cls, database_url, logging_name):
+        """Singleton getter method, initializes class private variables, including db connection and ORM, if the singleton is not set.
+
+        :return: The single instance of the TxDbManager class
+        :rtype: TxDbManager
+        
+        |
+
+        """
         if cls.__singleton == None:
             cls.__engine = create_engine(database_url.replace('postgres://', 'postgresql://', 1), logging_name=logging_name)
             metadata_obj = MetaData(schema='salesforce')
@@ -33,6 +48,35 @@ class TxDbManager(object):
         self.sessionmaker = sessionmaker(engine)
 
     def create_tx_in_db(self, bill_of_lading_id, sent_from, to_address, tx_type, from_address='', token_id=''):
+        """Creates the log entry for the tranasaction in postgre
+
+        :param bill_of_lading_id: Salesforce ID of the Bill_Of_Lading__c record to which the transaction pertains
+        :type bill_of_lading_id: String
+        :param sent_from: On-chain address who sent the transaction
+        :type sent_from: String
+        :param to_address: On-chain address considered recipient of the transaction (new token owner in case of transfer or minting for instance)
+        :type to_address: String
+        :param tx_type: Type of the transaction (3 possible values : Minting, Transfer, Burn), allowed values are those of the Salesforce Bill_Of_Lading__c.Type__c picklist values
+        :type tx_type: String
+        :param from_address: On-chain address from which the transaction will originate (transaction signer), defaults to ''
+        :type from_address: String, optional
+        :param token_id: Contract-generated ID of the token to which the transaction will apply, defaults to ''
+        :type token_id: String, optional
+        :return: Dictionnary containing the transaction log entry identifiers
+        :rtype: Dictionnary
+
+        | Example of return value:
+
+        .. code-block:: python
+
+            {
+                'uuid': 30df4399-e07f-4c95-9e65-f5c63cd654fe, 
+                'id': 26
+            }
+
+        |
+
+        """
         with self.sessionmaker() as session:
             tx_uuid = uuid.uuid4()
             tx = TxDbManager.__txs(
@@ -53,6 +97,18 @@ class TxDbManager(object):
             return {'uuid': tx.gateway_id__c, 'id': tx.id}
     
     def update_tx_as_sent(self, tx_uuid, tx_hash, tx):
+        """Update transaction's log entry status as 'Sent' in the database, providing additional information at that stage of the transaction's management (transaction hash and nonce)
+
+        :param tx_uuid: UUID of the log entry in the postgre database
+        :type tx_uuid: String
+        :param tx_hash: Transaction hash returned by the chain
+        :type tx_hash: Hexadecimal
+        :param tx: Dictionnary containing the transaction information, must contain a 'nonce' entry
+        :type tx: Dictionnary
+
+        |
+
+        """
         with self.sessionmaker() as session:
             session.execute(
                 update(TxDbManager.__txs).where(TxDbManager.__txs.gateway_id__c == tx_uuid).values(
@@ -65,6 +121,19 @@ class TxDbManager(object):
             session.commit()
     
     def update_tx_with_receipt(self, tx_uuid, tx_receipt):
+        """Update transaction's log entry status as 'Cleared' in the database, providing additional information at that stage \
+            of the transaction's management (receipt information such as from_address, to_address and token_id)
+
+        :param tx_uuid: UUID of the log entry in the postgre database
+        :type tx_uuid: String
+        :param tx_hash: Transaction hash returned by the chain
+        :type tx_hash: Hexadecimal
+        :param tx_receipt: Dictionnary containing the decoded transaction's receipt information
+        :type tx: Dictionnary
+        
+        |
+
+        """
         with self.sessionmaker() as session:
             session.execute(    
                 update(TxDbManager.__txs).where(TxDbManager.__txs.gateway_id__c == tx_uuid).values(
@@ -79,6 +148,19 @@ class TxDbManager(object):
             session.commit()
 
     def update_tx_as_failed(self, tx_uuid, code, message):
+        """Update transaction's log entry status as 'Failed' in the database, providing additional information at that stage \
+            of the transaction's management (error code and error message related to the failure state)
+
+        :param tx_uuid: UUID of the log entry in the postgre database
+        :type tx_uuid: String
+        :param code: Error code for the error related to the transaction's failure
+        :type code: String
+        :param message: Error message for the error related to the transaction's failure
+        :type message: String
+
+        |
+
+        """
         with self.sessionmaker() as session:
             session.execute(
                 update(TxDbManager.__txs).where(
@@ -93,6 +175,16 @@ class TxDbManager(object):
             session.commit()
 
     def get_highest_nonce(self, from_address):
+        """Returns the highest nonce registered in the database for transactions signed by a given on-chain address
+
+        :param from_address: On-chain address, transactions' signee
+        :type from_address: String
+        :return: Highest nonce for the transaction scope where the signee is from_address
+        :rtype: Integer
+
+        |
+
+        """
         with self.sessionmaker() as session:
             db_nonce = session.execute(
                 select(
@@ -104,6 +196,16 @@ class TxDbManager(object):
             return db_nonce
 
     def get_db_nonce(self, from_address):
+        """Returns the highest nonce registered in the database for 'Cleared' transactions signed by a given on-chain address
+
+        :param from_address: On-chain address, transactions' signee
+        :type from_address: String
+        :return: Highest nonce for the transaction scope where the signee is from_address
+        :rtype: Integer
+
+        |
+
+        """
         with self.sessionmaker() as session:
             db_nonce = session.execute(
                 select(
@@ -120,6 +222,16 @@ class TxDbManager(object):
 
 
     def get_db_highest_failed_nonce(self, from_address):
+        """Returns the highest nonce registered in the database for 'Failed' transactions signed by a given on-chain address
+
+        :param from_address: On-chain address, transactions' signee
+        :type from_address: String
+        :return: Highest nonce for the transaction scope where the signee is from_address
+        :rtype: Integer
+
+        |
+
+        """
         with self.sessionmaker() as session:
             db_highest_failed = session.execute(
                 select(

@@ -1,3 +1,5 @@
+:orphan:
+
 enitium-gateway
 ===============
 
@@ -6,10 +8,11 @@ enitium-gateway
 
    app
    auth0
-   classes
-   clock
+   crypto
    decorators
+   enftycontract
    exceptions
-   helpful_scripts
-   salesforce
+   g
+   txmanager
+   worker_scripts
    worker

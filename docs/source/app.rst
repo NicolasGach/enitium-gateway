@@ -2,6 +2,5 @@ app module
 ==========
 
 .. automodule:: app
-   :members:
-   :undoc-members:
-   :show-inheritance:
+.. autoflask:: app:app
+   :undoc-static:

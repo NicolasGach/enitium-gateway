@@ -1,3 +1,8 @@
+"""Script library containing methods which can be passed to the worker's queues for execution.
+
+    .. moduleAuthor:: Nicolas Gach <nicolas@e-nitium.com>
+
+"""
 import g
 from txmanager import TxDbManager
 from enftycontract import EnftyContract
@@ -7,6 +12,22 @@ log = g.log
 
 global process_mint
 def process_mint(tx_uuid, recipient_address, token_uri, nonce=-1):
+    """Processes 'Minting' transactions in the worker
+
+    :param tx_uuid: UUID of the transaction in the postgre database
+    :type tx_uuid: String
+    :param recipient_address: On-chain address targeted by the transaction (newly minted token recipient)
+    :type recipient_address: String
+    :param token_uri: Token metadata (retrieved from IPFS)
+    :type token_uri: String
+    :param nonce: If provided, overrides the computed nonce value for the transaction, defaults to -1
+    :type nonce: int, optional
+
+    | The method captures exceptions thrown by txmanager's or enftycontract's methods called during its execution, and consequently updates the transactions as failed. \
+        Those exceptions can be ValueError or w3.exceptions.TimeExhausted.
+    |
+
+    """
     tx_db_manager = TxDbManager.get_tx_db_manager(g.DATABASE_URL, 'gatewayengine')
     try:
         contract = EnftyContract.get_enfty_contract()
@@ -31,6 +52,26 @@ def process_mint(tx_uuid, recipient_address, token_uri, nonce=-1):
 
 global process_transfer
 def process_transfer(tx_uuid, from_address, from_pk, recipient_address, token_id, nonce=-1):
+    """Processes 'Transfer' transactions in the worker
+
+    :param tx_uuid: UUID of the transaction in the postgre database
+    :type tx_uuid: String
+    :param from_address: On-chain address signing the transaction (current owner of the token)
+    :type from_address: String
+    :param from_pk: Private key of the signing account
+    :type from_pk: String
+    :param recipient_address: On-chain address targeted by the transaction (new token owner)
+    :type recipient_address: String
+    :param token_id: Contract-generated ID of the token to be transferred
+    :type token_id: String
+    :param nonce: If provided, overrides the computed nonce value for the transaction, defaults to -1
+    :type nonce: int, optional
+
+    | The method captures exceptions thrown by txmanager's or enftycontract's methods called during its execution, and consequently updates the transactions as failed. \
+        Those exceptions can be ValueError or w3.exceptions.TimeExhausted.
+    |
+
+    """
     tx_db_manager = TxDbManager.get_tx_db_manager(g.DATABASE_URL, 'gatewayengine')
     try:
         contract = EnftyContract.get_enfty_contract()
@@ -55,6 +96,24 @@ def process_transfer(tx_uuid, from_address, from_pk, recipient_address, token_id
 
 global process_burn
 def process_burn(tx_uuid, from_address, from_pk, token_id, nonce=-1):
+    """Processes 'Burn' transactions in the worker
+
+    :param tx_uuid: UUID of the transaction in the postgre database
+    :type tx_uuid: String
+    :param from_address: On-chain address signing the transaction (current owner of the token)
+    :type from_address: String
+    :param from_pk: Private key of the signing account
+    :type from_pk: String
+    :param token_id: Contract-generated ID of the token to be transferred
+    :type token_id: String
+    :param nonce: If provided, overrides the computed nonce value for the transaction, defaults to -1
+    :type nonce: int, optional
+
+    | The method captures exceptions thrown by txmanager's or enftycontract's methods called during its execution, and consequently updates the transactions as failed. \
+        Those exceptions can be ValueError or w3.exceptions.TimeExhausted.
+    |
+
+    """
     tx_db_manager = TxDbManager.get_tx_db_manager(g.DATABASE_URL, 'gatewayengine')
     try:
         contract = EnftyContract.get_enfty_contract()

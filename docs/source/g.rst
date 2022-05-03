@@ -1,7 +1,7 @@
-classes module
-==============
+g module
+========
 
-.. automodule:: classes
+.. automodule:: g
    :members:
    :undoc-members:
    :show-inheritance:

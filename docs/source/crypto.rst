@@ -1,7 +1,7 @@
-clock module
-============
+crypto module
+=================
 
-.. automodule:: clock
+.. automodule:: crypto
    :members:
    :undoc-members:
    :show-inheritance:

@@ -1,3 +1,9 @@
+"""Worker main module, 3 queues are available for allocation: high, default & low. \
+    No distinction between the three at the moment, in the future can be the basis for different priority fee allocation for instance. Based on Redistogo
+    
+    .. moduleAuthor:: Nicolas Gach <nicolas@e-nitium.com> 
+    
+"""
 import os
 import redis
 from rq import Worker, Queue, Connection
