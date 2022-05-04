@@ -1,272 +1,415 @@
-# app.py
-import os
-import werkzeug.exceptions as ex
-import json
-import re
+"""Web app based on Flask containing endpoints made available by the gateway.
+
+    .. moduleAuthor::Nicolas Gach <nicolas@e-nitium.com>
+
+"""
+import g
 import requests
-from web3 import Web3, exceptions
-from web3.gas_strategies.time_based import medium_gas_price_strategy
-from eth_abi import decode_single
-from pathlib import Path
+import werkzeug.exceptions as ex
 from auth0 import AuthError, requires_auth, requires_scope
-from flask import Flask, request, jsonify, abort
-from flask_cors import cross_origin
+from crypto import Crypto
+from decorators import requires_post_params
+from enftycontract import EnftyContract
 from exceptions import AuthError, LogicError
+from flask import Flask, request, jsonify
 from logging import DEBUG
-from helpful_scripts import decrypt_sf_aes, sign_and_send_w3_transaction_transfer_type, sanitize_dict, process_mint, process_transfer
-from decorators import requires_post_params, requires_w3_access
-from classes import W3EnitiumContract
 from rq import Queue
+from txmanager import TxDbManager
 from worker import conn
-from sqlalchemy import create_engine, MetaData, Table
-from sqlalchemy import MetaData, Table, create_engine, and_, func
-from sqlalchemy.sql import select
-from sqlalchemy.orm import sessionmaker
-from datetime import datetime, timezone
-import uuid
+from worker_scripts import process_mint, process_transfer, process_burn
 
 #contract : 0x855539e32608298cF253dC5bFb25043D19692f6a
 #upgradeable : 0xdE2b51ba8888e401725Df10328EE5063fdaF1a3E
 
 app = Flask(__name__)
 app.logger.setLevel(DEBUG)
-w3 = Web3(Web3.HTTPProvider(os.environ['INFURA_NODE_URL']))
-w3.eth.set_gas_price_strategy(medium_gas_price_strategy)
-CONTRACT_ADDRESS = os.environ['CONTRACT_ADDRESS']
-with open('EnitiumNFT.json', 'r') as f:
-    json_contract = json.load(f)
-CONTRACT_ABI = json_contract["abi"]
-OWNER_ACCOUNT = os.environ['OWNER_ACCOUNT']
-OWNER_PRIVATE_KEY = os.environ['OWNER_PRIVATE_KEY']
-IPFS_PROJECT_ID = os.environ['IPFS_PROJECT_ID']
-IPFS_PROJECT_SECRET = os.environ['IPFS_PROJECT_SECRET']
-MAX_FEE_PER_GAS = os.environ['MAX_FEE_PER_GAS_GWEI']
-MAX_PRIORITY_FEE_PER_GAS = os.environ['MAX_PRIORITY_FEE_PER_GAS_GWEI']
+
 q_high = Queue('high', connection = conn)
 q_low = Queue('low', connection = conn)
-DATABASE_URL=os.environ['DATABASE_URL']
-sqlengine = create_engine(DATABASE_URL.replace('postgres://', 'postgresql://', 1), logging_name='gatewayengine')
-metadata_obj = MetaData(schema='salesforce')
-metadata_obj.reflect(bind=sqlengine)
-app.logger.info('table keys : %s', metadata_obj.tables.keys())
-enfty_tx_table = metadata_obj.tables['salesforce.enfty_bol_transfer_data__c']
 
 @app.route('/')
 def index():
+    """Base route for the app
+
+    :return: Static json
+    
+    | Doesn't do shit
+    |
+    """
     response = {}
     response['callresponse'] = 'ok home'
     return jsonify(response)
 
 @app.route('/test_nonce/<testAddress>', methods=['GET'])
 def test_nonce(testAddress):
-    conn = sqlengine.connect()
-    from_address = testAddress
-    db_nonce = conn.execute(select([func.max(enfty_tx_table.c.nonce__c)]).where(enfty_tx_table.c.from_address__c == from_address)).scalar()
-    app.logger.info('nonce user : %s', db_nonce)
-    nonce = (int(db_nonce) + 1) if not db_nonce is None else 1
-    response = {"nonce": nonce}
+    """Test endpoint to figure out nocne values in db- to be removed after demo
+
+    :param testAddress: The hexadecimal hex address in string format which nonce are going to be counted for, e.g. "0x000..."
+    :type testAddress: String
+    :return: JSON containing the nonce value
+    :rtype: JSON
+
+    | Example of return value :
+
+    .. code-block:: javascript
+
+        {"nonce": 71}
+
+    |
+
+    """
+    tx_db_manager = TxDbManager.get_tx_db_manager(g.DATABASE_URL, 'gatewayengine')
+    db_nonce = tx_db_manager.get_highest_nonce(testAddress)
+    response = {"nonce": db_nonce}
     return jsonify(response)
 
 @app.route('/post_ipfs', methods=['POST'])
 @requires_auth
 def post_ipfs():
-    if requires_scope("access:gateway"):
-        if "file" in request.files:
-            app.logger.info('File content %s',request.files['file'].read())
-            params = {'file': request.files['file'].read()}
-            response = requests.post(
-                os.environ['INFURA_IPFS_URL'] + '/api/v0/add', 
-                files=params,
-                auth=(IPFS_PROJECT_ID, IPFS_PROJECT_SECRET)
-            )
-            app.logger.info('Reponse %s', response)
-            return response.text
-        raise LogicError({"code": "Bad Request", "description": "No file input in request"}, 400)
-    raise AuthError({"code": "Unauthorized", "description": "You don't have access to this resource"}, 403)
+    """IPFS posting endpoint
+
+    :raises AuthError: AuthError raised if authentication towards Auth0 is unsuccessful
+    :raises LogicError: LogicError raised if no file is provided in the request
+    :return: Returns the response from the Infura-managed IPFS network
+    :rtype: JSON
+
+    | Example of return value :
+    
+    .. code-block:: javascript
+
+        {
+            "Name":"a017Q00000JvZN7QAN_token_2022-01-18 12-18-16Z.json",
+            "Hash":"QmQ6TxWJG6oEEuZdNQDrBLcfpiswkCvVequJPzZr4C4Ng6",
+            "Size":"243"
+        }
+
+    |
+
+    """
+    if not requires_scope("access:gateway"): raise AuthError({"code": "Unauthorized", "description": "You don't have access to this resource"}, 403)
+    if not "file" in request.files: raise LogicError({"code": "Bad Request", "description": "No file input in request"}, 400)
+    app.logger.debug('File content %s',request.files['file'].read())
+    params = {'file': request.files['file'].read()}
+    response = requests.post(g.INFURA_IPFS_URL + '/api/v0/add', files=params, auth=(g.IPFS_PROJECT_ID, g.IPFS_PROJECT_SECRET))
+    app.logger.debug('Response %s', response)
+    return response.text
 
 @app.route('/mint', methods=['POST'])
 @requires_auth
 @requires_post_params(['recipient_address', 'token_hash', 'bol_id'])
-@requires_w3_access
 def mint():
-    if not requires_scope("access:gateway"):
-        raise AuthError({"code": "Unauthorized", "description": "You don't have access to this resource"}, 403)
-    if not w3.isConnected():
-        raise LogicError({"code": "Code Error", "description": "W3 not initialized"}, 500)
+    """Endpoint for token minting
+
+    :param recipient_address: Expected parameter in the POST form-data body, on-chain address of the token's recipient
+    :type recipient_address: String
+    :param token_hash: Expected parameter in the POST form-data body, IPFS hash of the token's metadata file
+    :type token_hash: String
+    :param bol_id: Expected parameter in the POST form-data body, Salesforce ID of the Bill_Of_Lading__c record to which the token should be attached. Used in writing the transaction log entry in the postgre database.
+    :type bol_id: String
+    :raises AuthError: AuthError raised if authentication towards Auth0 is unsuccessful
+    :raises LogicError: LogicError raised if the Infura-managed IPFS service is unavailable (couldn't retrieve the token's metadata)
+    :return: Transaction receipt generated by the gateway
+    :rtype: JSON
+
+    | NB: this endpoint calls enftycontract and tx_db_manager class methods which themselves can raise exceptions, see the related documentation.
+    | If any of the expected parameters are missing from the form-data body, an exception will be raised.
+    | Example of return value: 
+    
+    .. code-block:: javascript
+
+        {
+            "job_enqueued":"ok",
+            "postgre_id":17,
+            "tx_uuid":"b53ece2d-2fcc-492d-a857-c4853379ffb2"
+        }
+
+    |
+
+    """
+    if not requires_scope("access:gateway"): raise AuthError({"code": "Unauthorized", "description": "You don't have access to this resource"}, 403)
+    
     sane_form = sanitize_dict(request.form)
-    app.logger.info('sane_form : %s', sane_form)
-    if not w3.isAddress(sane_form['recipient_address']):
-        raise LogicError({"code": "Request Error", "description": "Bad request, input not a valid address"}, 400)
-    if not w3.eth.get_balance(sane_form['recipient_address']):
-        raise LogicError({"code": "Request Error", "description": "The sender account has no funds or does not exist"}, 400)
-    ipfs_response = requests.post(
-        os.environ['INFURA_IPFS_URL'] + '/api/v0/block/get', 
-        params={'arg': sane_form['token_hash']},
-        auth=(IPFS_PROJECT_ID, IPFS_PROJECT_SECRET)
-    )
-    if not ipfs_response.status_code == 200:
-        raise LogicError({"code": "Request Error", "description": "Token not found on IPFS host"}, 400)
+    app.logger.debug('sane_form : %s', sane_form)
+    
+    EnftyContract.check_addresses(sane_form['recipient_address'])
+    EnftyContract.check_minimum_balances(g.OWNER_ACCOUNT)
+    
+    ipfs_response = requests.post(g.INFURA_IPFS_URL + '/api/v0/block/get', params={'arg': sane_form['token_hash']}, auth=(g.IPFS_PROJECT_ID, g.IPFS_PROJECT_SECRET))
+    if not ipfs_response.status_code == 200: raise LogicError({"code": "Request Error", "description": "Token not found on IPFS host"}, 400)
+
+    tx_db_manager = TxDbManager.get_tx_db_manager(g.DATABASE_URL, 'gatewayengine')
+    tx_db = tx_db_manager.create_tx_in_db(
+        sent_from=g.OWNER_ACCOUNT, 
+        to_address=g.OWNER_ACCOUNT,
+        bill_of_lading_id=sane_form['bol_id'],
+        tx_type='Minting')
+    
     nonce = -1
-    if 'nonce' in sane_form:
-        app.logger.info('Nonce forced in transaction with value : {0}'.format(nonce))
+    if 'nonce' in sane_form and int(sane_form['nonce'])>=0:
+        app.logger.debug('Nonce forced in transaction with value : {0}'.format(nonce))
         nonce = sane_form['nonce']
-    tx = {
-        'from': OWNER_ACCOUNT,
-        'chainId': 3,
-        #'gas': 2000000,
-        'maxFeePerGas': w3.toWei(MAX_FEE_PER_GAS, 'gwei'),
-        'maxPriorityFeePerGas': w3.toWei(MAX_PRIORITY_FEE_PER_GAS, 'gwei'),
-        'nonce': int(nonce)
-    }
-    tx_uuid = uuid.uuid4()
-    ins = enfty_tx_table.insert().values(
-        sent_from__c = OWNER_ACCOUNT,
-        to_address__c = OWNER_ACCOUNT,
-        gateway_id__c =  tx_uuid,
-        bill_of_lading__c = sane_form['bol_id'],
-        status__c = 'Processing',
-        last_status_change_date__c = datetime.now(timezone.utc),
-        type__c = 'Minting')
-    conn = sqlengine.connect()
-    result = conn.execute(ins)
-    conn.close()
-    q_high.enqueue(process_mint, args=(tx_uuid, tx, sane_form['recipient_address'], ipfs_response.text, sane_form['bol_id']))
-    return { 'tx_uuid': tx_uuid, 'job_enqueued' : 'ok', 'postgre_id': result.inserted_primary_key[0] }
+    q_high.enqueue(process_mint, args=(tx_db['uuid'], sane_form['recipient_address'], ipfs_response.text, nonce))
+
+    return { 'tx_uuid': tx_db['uuid'], 'job_enqueued' : 'ok', 'postgre_id': tx_db['id']}
 
 @app.route('/transfer', methods=['POST'])
 @requires_auth
 @requires_post_params(['from_address', 'from_pk', 'to_address', 'token_id', 'vector', 'bol_id'])
 def transfer():
-    if not requires_scope('access:gateway'):
-        raise AuthError({"code": "Unauthorized", "description": "You don't have access to this resource"}, 403)
-    if not w3.isConnected():
-        raise LogicError({"code": "Code Error", "description": "W3 not initialized"}, 500)
+    """Endpoint for token transfer
+
+    :param from_address: Expected parameter in the POST form-data body, on-chain address of the token's current owner (assumedly transaction initiator)
+    :type recipient_address: String
+    :param from_pk: Expected parameter in the POST form-data body, encrypted private key of the transaction sender account (current owner)
+    :type from_pk: String
+    :param to_address: Expected parameter in the POST form-data body, on-chain address of the token's receiver
+    :type to_address: String
+    :param token_id: Expected parameter in the POST form-data body, contract-generated ID of the Enfty token, identifying the token in the transfer transaction
+    :type token_id: String
+    :param vector: Expected parameter in the POST form-data body, encryption vector used to generate from_pk. Used in deencryption.
+    :type vector: String
+    :param bol_id: Expected parameter in the POST form-data body, Salesforce ID of the Bill_Of_Lading__c record to which the token should be attached. Used in writing the transaction log entry in the postgre database.
+    :type bol_id: String
+    :raises AuthError: AuthError raised if authentication towards Auth0 is unsuccessful
+    :raises LogicError: LogicError raised if the Infura-managed IPFS service is unavailable (couldn't retrieve the token's metadata)
+    :return: Transaction receipt generated by the gateway
+    :rtype: JSON
+
+    | NB: this endpoint calls enftycontract and tx_db_manager class methods which themselves can raise exceptions, see the related documentation.
+    | If any of the expected parameters are missing from the form-data body, an exception will be raised.
+    | Example of return value : 
+
+    .. code-block:: javascript
+
+        {
+            "job_enqueued":"ok",
+            "postgre_id":17,
+            "tx_uuid":"b53ece2d-2fcc-492d-a857-c4853379ffb2"
+        }
+
+    |
+
+    """
+    if not requires_scope('access:gateway'): raise AuthError({"code": "Unauthorized", "description": "You don't have access to this resource"}, 403)
+    
     sane_form = sanitize_dict(request.form)
-    app.logger.info('sane_form : %s', sane_form)
-    from_pk = decrypt_sf_aes(sane_form['from_pk'], os.environ['AES_KEY'], sane_form['vector'])
-    if not w3.isAddress(sane_form['from_address']) or not w3.isAddress(sane_form['to_address']):
-        raise LogicError({"code": "Request Error", "description": "Bad request, input not a valid address"}, 400)
-    app.logger.info('Before get balance ...')
-    if not w3.eth.get_balance(sane_form['from_address']) > 200000:
-        raise LogicError({"code": "Request Error", "description": "The sender account has no funds for transfer"}, 400)
+    app.logger.debug('sane_form : %s', sane_form)
+    from_pk = Crypto.decrypt_sf_aes(sane_form['from_pk'], g.AES_KEY, sane_form['vector'])
+    
+    EnftyContract.check_addresses(sane_form['from_address'], sane_form['to_address'])
+    EnftyContract.check_minimum_balances(sane_form['from_address'])
+    
+    tx_db_manager = TxDbManager.get_tx_db_manager(g.DATABASE_URL, 'gatewayengine')
+    tx_db = tx_db_manager.create_tx_in_db(
+        sent_from=sane_form['from_address'], 
+        to_address=sane_form['to_address'],
+        bill_of_lading_id=sane_form['bol_id'],
+        tx_type='Transfer',
+        from_address=sane_form['from_address'],
+        token_id=sane_form['token_id'])
     nonce = -1
-    if 'nonce' in sane_form:
-        app.logger.info('Nonce forced in transaction with value : {0}'.format(nonce))
+    if 'nonce' in sane_form and int(sane_form['nonce']) >=0:
+        app.logger.debug('Nonce forced in transaction with value : {0}'.format(nonce))
         nonce = sane_form['nonce']
-    tx = {
-        'from': sane_form['from_address'],
-        'chainId': 3,
-        #'gas': 2000000,
-        'maxFeePerGas': w3.toWei(MAX_FEE_PER_GAS, 'gwei'),
-        'maxPriorityFeePerGas': w3.toWei(MAX_PRIORITY_FEE_PER_GAS, 'gwei'),
-        'nonce': int(nonce)
-    }
-    tx_uuid = uuid.uuid4()
-    ins = enfty_tx_table.insert().values(
-        sent_from__c = sane_form['from_address'],
-        from_address__c = sane_form['from_address'],
-        to_address__c = sane_form['to_address'],
-        token_id__c = sane_form['token_id'],
-        gateway_id__c =  tx_uuid,
-        bill_of_lading__c = sane_form['bol_id'],
-        status__c = 'Processing',
-        last_status_change_date__c = datetime.now(timezone.utc),
-        type__c = 'Transfer')
-    conn = sqlengine.connect()
-    result = conn.execute(ins)
-    conn.close()
-    q_high.enqueue(process_transfer, args=(
-        tx_uuid, 
-        tx, 
-        sane_form['from_address'],
-        from_pk,
-        sane_form['to_address'], 
-        sane_form['token_id'],
-        sane_form['bol_id']
-    ))
-    return { 'tx_uuid': tx_uuid, 'job_enqueued' : 'ok', 'postgre_id': result.inserted_primary_key[0] }
+    q_high.enqueue(process_transfer, args=(tx_db['uuid'], sane_form['from_address'], from_pk, sane_form['to_address'], sane_form['token_id'], nonce))
+    return { 'tx_uuid': tx_db['uuid'], 'job_enqueued' : 'ok', 'postgre_id': tx_db['id'] }
 
 @app.route('/burn', methods=['POST'])
 @requires_auth
-@requires_post_params(['token_id', 'from_address', 'from_pk', 'vector'])
+@requires_post_params(['token_id', 'from_address', 'from_pk', 'vector', 'bol_id'])
 def burn():
-    if not requires_scope('access:gateway'):
-        raise AuthError({"code": "Unauthorized", "description": "You don't have access to this resource"}, 403)
-    if not w3.isConnected():
-        raise LogicError({"code": "Code Error", "description": "W3 not initialized"}, 500)
+    """Endpoint for token burning
+
+    :param from_address: Expected parameter in the POST form-data body, on-chain address of the token's current owner (assumedly transaction initiator)
+    :type recipient_address: String
+    :param from_pk: Expected parameter in the POST form-data body, encrypted private key of the transaction sender account (current owner)
+    :type from_pk: String
+    :param token_id: Expected parameter in the POST form-data body, contract-generated ID of the Enfty token, identifying the token in the transfer transaction
+    :type token_id: String
+    :param vector: Expected parameter in the POST form-data body, encryption vector used to generate from_pk. Used in deencryption.
+    :type vector: String
+    :param bol_id: Expected parameter in the POST form-data body, Salesforce ID of the Bill_Of_Lading__c record to which the token should be attached. Used in writing the transaction log entry in the postgre database.
+    :type bol_id: String
+    :raises AuthError: AuthError raised if authentication towards Auth0 is unsuccessful
+    :raises LogicError: LogicError raised if the Infura-managed IPFS service is unavailable (couldn't retrieve the token's metadata)
+    :return: Transaction receipt generated by the gateway
+    :rtype: JSON
+
+    | NB: this endpoint calls enftycontract and tx_db_manager class methods which themselves can raise exceptions, see the related documentation.
+    | If any of the expected parameters are missing from the form-data body, an exception will be raised.
+    | Example of return value : 
+    
+    .. code-block:: javascript
+
+        {
+            "job_enqueued":"ok",
+            "postgre_id":17,
+            "tx_uuid":"b53ece2d-2fcc-492d-a857-c4853379ffb2"
+        }
+
+    |
+
+    """
+    if not requires_scope('access:gateway'): raise AuthError({"code": "Unauthorized", "description": "You don't have access to this resource"}, 403)
+    
     sane_form = sanitize_dict(request.form)
-    app.logger.info('sane_form : %s', sane_form)
-    from_pk = decrypt_sf_aes(sane_form['from_pk'], os.environ['AES_KEY'], sane_form['vector'])
-    if w3.isAddress(sane_form['from_address']):
-        app.logger.info('Before get balance ...')
-        if w3.eth.get_balance(sane_form['from_address']) > 200000:
-            enitiumcontract = w3.eth.contract(address=CONTRACT_ADDRESS, abi=CONTRACT_ABI)
-            try:
-                enitiumcontract.functions.tokenURI(int(sane_form['token_id'])).call()
-            except exceptions.ContractLogicError as e:
-                app.logger.info('exception : {0}'.format(e))
-                raise LogicError({"code": "Blockchain Error", "description": "Smart contract returned exception, possibly trying to burn a non-existing token : {0}".format(e)}, 500)
-            nonce = w3.eth.get_transaction_count(sane_form['from_address'])
-            app.logger.info('before sending transaction')
-            enfty_tx = enitiumcontract.functions.burn(int(sane_form['token_id'])
-            ).buildTransaction({
-                'from': sane_form['from_address'],
-                'chainId': 3,
-                'gas': 200000,
-                'maxFeePerGas': w3.toWei('2', 'gwei'),
-                'maxPriorityFeePerGas': w3.toWei('1', 'gwei'),
-                'nonce': nonce
-            })
-            response = sign_and_send_w3_transaction_transfer_type(w3, enitiumcontract, enfty_tx, from_pk)
-            return response
-        raise LogicError({"code": "Request Error", "description": "The sender account has no funds for transfer"}, 400)
-    raise LogicError({"code": "Request Error", "description": "Bad request, input not a valid address"}, 400)
+    app.logger.debug('sane_form : %s', sane_form)
+    from_pk = Crypto.decrypt_sf_aes(sane_form['from_pk'], g.AES_KEY, sane_form['vector'])
+    
+    EnftyContract.check_addresses(sane_form['from_address'])
+    EnftyContract.check_minimum_balances(sane_form['from_address'])
+    
+    tx_db_manager = TxDbManager.get_tx_db_manager(g.DATABASE_URL, 'gatewayengine')
+    tx_db = tx_db_manager.create_tx_in_db(
+        sent_from=sane_form['from_address'],
+        to_address=None,
+        bill_of_lading_id=sane_form['bol_id'],
+        tx_type='Burn',
+        from_address=sane_form['from_address'],
+        token_id=sane_form['token_id'])
+    nonce = -1
+    if 'nonce' in sane_form and int(sane_form['nonce']) >=0:
+        app.logger.debug('Nonce forced in transaction with value : {0}'.format(nonce))
+        nonce = sane_form['nonce']
+    q_high.enqueue(process_burn, args=(tx_db['uuid'], sane_form['from_address'], from_pk, sane_form['token_id'], nonce))
+    return { 'tx_uuid': tx_db['uuid'], 'job_enqueued' : 'ok', 'postgre_id': tx_db['id'] }
 
 @app.route('/tokenURI/<tokenId>', methods=['GET'])
 @requires_auth
 def getTokenURI(tokenId):
-    if not requires_scope('access:gateway'):
-        raise AuthError({"code": "Unauthorized", "description": "You don't have access to this resource"}, 403)
-    if not w3.isConnected():
-        raise LogicError({"code": "Code Error", "description": "W3 not initialized"}, 500)
-    try:
-        enitiumcontract = w3.eth.contract(address=CONTRACT_ADDRESS, abi=CONTRACT_ABI)
-        tokenURI = enitiumcontract.functions.tokenURI(int(tokenId)).call()
-        m = re.search(r'{.+}', tokenURI)
-        app.logger.info('tokenURI : {0}'.format(tokenURI))
-        app.logger.info('m : {0}'.format(m.group(0)))
-        return m.group(0)
-    except exceptions.ContractLogicError as e:
-        app.logger.info('exception : {0}'.format(e))
-        raise LogicError({"code": "Blockchain Error", "description": "Smart contract returned exception: {0}".format(e)}, 500)
+    """Endpoint for retrieving the metadata associated to the provided token ID (contract-generated).
 
-@app.route('/receipt')
-@requires_auth
-@requires_post_params(['tx_hash'])
-def getReceipt():
-    pass
+    :param tokenId: Necessary query parameter, the contract-generated ID of the token to be handled
+    :type tokenId: String
+    :raises AuthError: AuthError raised if authentication towards Auth0 is unsuccessful
+    :return: Token metadata file content (assumedly JSON)
+    :rtype: String
+
+    | The returned value is not pure JSON as it is prefixed and suffixed with bytes, the actual JSON content needs to be parsed / extracted client-side.
+    | Example of return value :
+
+    .. code-block:: javascript
+
+        {
+            "bill_of_lading_title":"BoL extraction json",
+            "bill_of_lading_sf_id":"a017Q00000JvZN7QAN",
+            "bill_of_lading_n":"QSKJHD982",
+            "vessel":"MV Enitium",
+            "port_of_loading":"Dunkerque",
+            "port_of_discharge":"New York Harbor",
+            "name":"BOL-0000008"
+        }
+
+    |
+
+    """
+    if not requires_scope('access:gateway'): raise AuthError({"code": "Unauthorized", "description": "You don't have access to this resource"}, 403)
+    contract = EnftyContract.get_enfty_contract()
+    token_uri = contract.get_token_uri(tokenId)
+    return token_uri
 
 @app.route('/decrypt_test', methods=['POST'])
 @requires_auth
 def decrypt_test():
-    key = os.environ['AES_KEY']
-    return decrypt_sf_aes(request.form['content'], key, request.form['vector'])
+    """Key decription based on encryption key in the AES standard and on an encryption intialization vector.
+
+    :param content: Expected parameter in the urlencoded body of the POST request, the content to be decrypted 
+    :type content: String
+    :param vector: Expected parameter in the urlencoded body of the POST request, the vector to be used (16 bytes)
+    :type vector: String
+    :return: Decrypted content as string
+    :rtype: String
+
+    |
+
+    """
+    key = g.AES_KEY
+    return Crypto.decrypt_sf_aes(request.form['content'], key, request.form['vector'])
 
 @app.errorhandler(500)
 def internal_error(e):
+    """Error Handler for code 500
+
+    :param e: Error to be handled
+    :type e: Flask exception
+    :return: Page content to be displayed following a code 500 error 
+    :rtype: HTML
+
+    |
+
+    """
     return '<p>Internal Error occurred'
 
 @app.errorhandler(LogicError)
 def handle_logic_error(ex):
+    """Error Handler for LogicError exception type
+
+    :param ex: Error to be handled
+    :type ex: LogicError
+    :return: JSON response to be returned following a LogicError, contains the error code & error message
+    :rtype: JSON
+
+    | Example of return value : 
+    
+    .. code-block:: javascript
+
+        {
+            "status_code": 400, 
+            "error": {
+                "code": "Request Error", 
+                "description": "Token not found on IPFS host"
+            }
+        }
+
+    |
+
+    """
     response = jsonify(ex.error)
     response.status_code = ex.status_code
     return response
 
 @app.errorhandler(AuthError)
 def handle_auth_error(ex):
+    """Error Handler for AuthError exception type
+
+    :param ex: Error to be handled
+    :type ex: AuthError
+    :return: JSON response to be returned following a AuthError, contains the error code & error message
+    :rtype: JSON
+
+    | Example of return value : 
+    
+    .. code-block:: javascript
+
+        {
+            "status_code": 400, 
+            "error": {
+                "code": "Authentication Error", 
+                "description": "Request has no authentication header"
+            }
+        }
+
+    |
+
+    """
     response = jsonify(ex.error)
     response.status_code = ex.status_code
     return response
+
+def sanitize_dict(dict):
+    """Utility method sanitizing dict provided as parameter. Used to sanitize POST form-data input mostly. At the moment, a stripping utility.
+
+    :param dict: Dictionnary to be sanitized
+    :type dict: Dictionnary
+    :return: Sanitized dictionnary
+    :rtype: Dictionnary
+
+    |
+
+    """
+    sane_form = {}
+    for key in dict: sane_form[key] = dict[key].strip()
+    return sane_form
 
 if __name__ == '__main__':
     # Threaded option to enable multiple instances for multiple user access support
